@@ -1049,4 +1049,99 @@ describe("SorokitProvider", () => {
       );
     });
   });
+
+  describe("errorHistory and clearError (#766)", () => {
+    const ErrorHistoryComponent = () => {
+      const {
+        connectWallet,
+        disconnectWallet,
+        clearError,
+        error,
+        errorHistory,
+      } = useSorokit();
+
+      return (
+        <div>
+          <div data-testid="error">{error || "none"}</div>
+          <div data-testid="errorHistory">{JSON.stringify(errorHistory)}</div>
+          <button onClick={() => connectWallet()}>Connect</button>
+          <button onClick={() => disconnectWallet()}>Disconnect</button>
+          <button onClick={() => clearError()}>Clear Error</button>
+        </div>
+      );
+    };
+
+    it("accumulates multiple sequential errors in errorHistory in order", async () => {
+      mockClient.wallet.connect = vi
+        .fn()
+        .mockResolvedValueOnce({ data: null, error: "First wallet error" })
+        .mockResolvedValueOnce({ data: null, error: "Second wallet error" });
+
+      renderWithProvider(<ErrorHistoryComponent />, { client: mockClient });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("Connect"));
+      });
+
+      expect(screen.getByTestId("errorHistory")).toHaveTextContent(
+        JSON.stringify(["First wallet error"]),
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("Connect"));
+      });
+
+      expect(screen.getByTestId("errorHistory")).toHaveTextContent(
+        JSON.stringify(["First wallet error", "Second wallet error"]),
+      );
+    });
+
+    it("disconnectWallet resets errorHistory to []", async () => {
+      mockClient.wallet.connect = vi
+        .fn()
+        .mockResolvedValueOnce({ data: null, error: "Connection error" });
+
+      renderWithProvider(<ErrorHistoryComponent />, { client: mockClient });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("Connect"));
+      });
+
+      expect(screen.getByTestId("errorHistory")).toHaveTextContent(
+        JSON.stringify(["Connection error"]),
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("Disconnect"));
+      });
+
+      expect(screen.getByTestId("errorHistory")).toHaveTextContent("[]");
+    });
+
+    it("clearError does not reset errorHistory", async () => {
+      mockClient.wallet.connect = vi
+        .fn()
+        .mockResolvedValueOnce({ data: null, error: "Some error" });
+
+      renderWithProvider(<ErrorHistoryComponent />, { client: mockClient });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("Connect"));
+      });
+
+      expect(screen.getByTestId("error")).toHaveTextContent("Some error");
+      expect(screen.getByTestId("errorHistory")).toHaveTextContent(
+        JSON.stringify(["Some error"]),
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("Clear Error"));
+      });
+
+      expect(screen.getByTestId("error")).toHaveTextContent("none");
+      expect(screen.getByTestId("errorHistory")).toHaveTextContent(
+        JSON.stringify(["Some error"]),
+      );
+    });
+  });
 });
