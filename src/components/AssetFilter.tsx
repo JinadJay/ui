@@ -610,7 +610,9 @@ function AssetFilter({
 
   // ── Reset focused index when filtered list changes ─────────────────────────
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setFocusedIndex(0); }, [filtered]);
+  useEffect(() => { 
+    setFocusedIndex((prev) => filtered.length === 0 ? 0 : Math.max(0, Math.min(prev, filtered.length - 1))); 
+  }, [filtered]);
 
 
   // ── Render ─────────────────────────────────────────────────────────────────

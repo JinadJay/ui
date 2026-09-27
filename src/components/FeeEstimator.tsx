@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useSorokit } from "@/context/useSorokit";
 import { useIsVisible } from "@/hooks/useIsVisible";
+import { useFeeData } from "@/hooks/useFeeData";
 import { cn, toXLM } from "@/lib/utils";
 
 export const MIN_NETWORK_BASE_FEE = 100;
@@ -86,64 +87,21 @@ export function FeeEstimator({
   // one started is discarded rather than overwriting fresher data.
   const requestIdRef = useRef(0);
 
-  const load = useCallback(async () => {
-    if (!client) return;
-    const requestId = ++requestIdRef.current;
-    const isStale = () => requestId !== requestIdRef.current;
-    setLoading(true);
-    try {
-      const { data, error: err } = await client.transaction.estimateFee();
-      if (isStale()) return;
-      if (err) {
-        setError(err);
-        return;
-      }
-      if (data) {
-        const clampedData: FeeData = {
-          baseFee: Math.max(MIN_NETWORK_BASE_FEE, parseInt(data.baseFee || "0", 10) || 0).toString(),
-          recommended: Math.max(MIN_NETWORK_BASE_FEE, parseInt(data.recommended || "0", 10) || 0).toString(),
-        };
-        setFee(clampedData);
-        setError(null);
-        onFeeLoadRef.current?.(clampedData);
-      }
-    } catch (e) {
-      if (isStale()) return;
-      setError(e instanceof Error ? e.message : "Request timed out");
-    } finally {
-      // Issue #442: a stale call must not clear the spinner owned by the
-      // request that superseded it.
-      if (!isStale()) setLoading(false);
-    }
-  }, [client]);
-
-  // Issue #442: one effect owns both the initial fetch and the poll timer, so
-  // mount makes exactly one request and a changed `refreshInterval` re-arms the
-  // timer at the new period.
+  const { fee, loading: hookLoading, error: hookError, load: hookLoad } = useFeeData(refreshInterval);
+  
   useEffect(() => {
-    // Dashboard keeps a visited screen mounted (rather than unmounting it)
-    // to preserve in-progress state — see the comment in Dashboard.tsx.
-    // That means a screen navigated away from is still mounted, just
-    // hidden; without this check, a refreshInterval keeps firing network
-    // requests for a screen the user can no longer see (#533).
-    if (!isVisible) return;
-
-    const timerId = window.setTimeout(() => {
-      void load();
-    }, 0);
-    if (refreshInterval > 0) {
-      const id = setInterval(() => {
-        void load();
-      }, refreshInterval);
-      return () => {
-        window.clearTimeout(timerId);
-        clearInterval(id);
-      };
+    if (fee) {
+      setFee(fee);
+      setError(null);
+      onFeeLoadRef.current?.(fee);
     }
-    return () => {
-      window.clearTimeout(timerId);
-    };
-  }, [load, refreshInterval, isVisible]);
+    setLoading(hookLoading);
+    if (hookError) setError(hookError);
+  }, [fee, hookLoading, hookError]);
+
+  const load = useCallback(async () => {
+    await hookLoad();
+  }, [hookLoad]);
 
   const compactContent = fee
     ? `Base: ${fee.baseFee} stroops · Recommended: ${fee.recommended} stroops`

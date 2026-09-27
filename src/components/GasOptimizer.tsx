@@ -154,14 +154,14 @@ function copyViaExecCommand(text: string): boolean {
     textarea.style.pointerEvents = "none";
     document.body.appendChild(textarea);
     textarea.select();
-    textarea.setSelectionRange(0, text.length);
-    const succeeded = document.execCommand("copy");
-    document.body.removeChild(textarea);
     return succeeded;
   } catch {
     return false;
   }
 }
+
+import { useFeeData } from "@/hooks/useFeeData";
+import { useIsVisible } from "@/hooks/useIsVisible";
 
 export function GasOptimizer({
   className,
@@ -170,6 +170,8 @@ export function GasOptimizer({
   onExport,
 }: GasOptimizerProps) {
   const { client, network } = useSorokit();
+  const { fee } = useFeeData(refreshInterval);
+  const [containerRef, isVisible] = useIsVisible<HTMLDivElement>();
   const [gasPriceData, setGasPriceData] = useState<GasPriceData | null>(null);
   const [estimate, setEstimate] = useState<GasEstimate | null>(null);
   const [loading, setLoading] = useState(true);
@@ -244,6 +246,7 @@ export function GasOptimizer({
   }, [client, estimate, operations]);
 
   useEffect(() => {
+    if (!isVisible) return;
     const timerId = window.setTimeout(() => {
       void loadGasData();
     }, 0);
@@ -406,6 +409,7 @@ export function GasOptimizer({
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         "rounded-xl border border-line bg-surface overflow-hidden",
         className,

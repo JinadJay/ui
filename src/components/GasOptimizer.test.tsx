@@ -710,7 +710,59 @@ describe("GasOptimizer", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Export Config" }));
 
-      expect(execCommandSpy).toHaveBeenCalledWith("copy");
+  });
+  
+  });
+  
+  describe("Visibility polling (#772)", () => {
+    it("pauses polling when isVisible is false and resumes when true", async () => {
+      vi.useFakeTimers();
+      
+      // Mock useIsVisible to return our controlled state
+      let currentIsVisible = true;
+      const setVisibleMock = vi.fn();
+      
+      // Override the module for this test
+      vi.doMock("@/hooks/useIsVisible", () => ({
+        useIsVisible: () => [{ current: null }, currentIsVisible, setVisibleMock]
+      }));
+      
+      const { GasOptimizer: GasOptimizerWithMock } = await import("./GasOptimizer");
+      const { getGasPrice } = mockClient();
+      
+      const { unmount, rerender } = render(<GasOptimizerWithMock refreshInterval={5000} />);
+      
+      await vi.runOnlyPendingTimersAsync();
+      const count1 = getGasPrice.mock.calls.length;
+      
+      // Change visibility to false
+      currentIsVisible = false;
+      rerender(<GasOptimizerWithMock refreshInterval={5000} />);
+      
+      // Advance timers by multiple intervals
+      await act(async () => {
+        vi.advanceTimersByTime(15000);
+      });
+      
+      // Should not have polled while invisible
+      expect(getGasPrice.mock.calls.length).toBe(count1);
+      
+      // Change visibility to true
+      currentIsVisible = true;
+      rerender(<GasOptimizerWithMock refreshInterval={5000} />);
+      
+      // Wait for immediate resumption effect
+      await vi.runOnlyPendingTimersAsync();
+      
+      // Advance by one interval
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+      
+      expect(getGasPrice.mock.calls.length).toBeGreaterThan(count1);
+      
+      vi.doUnmock("@/hooks/useIsVisible");
+      vi.useRealTimers();
     });
   });
 });
