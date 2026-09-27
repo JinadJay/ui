@@ -249,6 +249,48 @@ describe("SorobanPanel", () => {
         sourceAccount: "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWNA",
       });
     });
+
+    it("caps history at 20 by default and evicts the oldest entry when 21st contract is added", async () => {
+      mockInvokeContract.mockResolvedValue({ data: { ok: true }, error: null });
+      const { rerender } = render(<SorobanPanel contractId="C1" onContractIdChange={() => {}} />);
+      fireEvent.change(screen.getByLabelText("Method"), { target: { value: "test" } });
+
+      // Add 21 contracts sequentially
+      for (let i = 1; i <= 21; i++) {
+        const id = `C${i}`;
+        rerender(<SorobanPanel contractId={id} onContractIdChange={() => {}} />);
+        fireEvent.click(screen.getByRole("button", { name: /invoke/i }));
+        await screen.findByText("Result", { selector: "span" });
+        fireEvent.click(screen.getByRole("button", { name: /clear/i }));
+      }
+
+      const raw = localStorage.getItem("sorokit-soroban-contract-history");
+      const stored = JSON.parse(raw || "[]");
+      expect(stored.length).toBe(20);
+      expect(stored[0]).toBe("C21");
+      expect(stored).not.toContain("C1");
+    });
+
+    it("respects custom maxHistory prop", async () => {
+      mockInvokeContract.mockResolvedValue({ data: { ok: true }, error: null });
+      const { rerender } = render(<SorobanPanel contractId="C1" onContractIdChange={() => {}} maxHistory={5} />);
+      fireEvent.change(screen.getByLabelText("Method"), { target: { value: "test" } });
+
+      for (let i = 1; i <= 7; i++) {
+        const id = `C${i}`;
+        rerender(<SorobanPanel contractId={id} onContractIdChange={() => {}} maxHistory={5} />);
+        fireEvent.click(screen.getByRole("button", { name: /invoke/i }));
+        await screen.findByText("Result", { selector: "span" });
+        fireEvent.click(screen.getByRole("button", { name: /clear/i }));
+      }
+
+      const raw = localStorage.getItem("sorokit-soroban-contract-history");
+      const stored = JSON.parse(raw || "[]");
+      expect(stored.length).toBe(5);
+      expect(stored[0]).toBe("C7");
+      expect(stored).not.toContain("C1");
+      expect(stored).not.toContain("C2");
+    });
   });
 
   // ── ABI loader (#332) ──────────────────────────────────────────────────────
