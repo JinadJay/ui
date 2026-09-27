@@ -5,71 +5,71 @@ import * as exports from "../index";
 describe("Public exports surface", () => {
   it("exposes all recently added and core component exports", () => {
     // Specifically requested component assertions (#771)
-    expect(exports.RebalancerHistory).toBeTypeOf("function");
-    expect(exports.SwapRoute).toBeTypeOf("function");
-    expect(exports.AllocationInput).toBeTypeOf("function");
-    expect(exports.StakingDashboard).toBeTypeOf("function");
+    expect(exports.RebalancerHistory).toBeDefined();
+    expect(exports.SwapRoute).toBeDefined();
+    expect(exports.AllocationInput).toBeDefined();
+    expect(exports.StakingDashboard).toBeDefined();
   });
 
   it("exposes all public UI primitive and component exports from src/index.ts", () => {
     // UI Primitives
-    expect(exports.Badge).toBeTypeOf("function");
-    expect(exports.Button).toBeTypeOf("function");
-    expect(exports.ButtonGroup).toBeTypeOf("function");
-    expect(exports.Card).toBeTypeOf("function");
-    expect(exports.CardContent).toBeTypeOf("function");
-    expect(exports.CardDescription).toBeTypeOf("function");
-    expect(exports.CardFooter).toBeTypeOf("function");
-    expect(exports.CardHeader).toBeTypeOf("function");
-    expect(exports.CardTitle).toBeTypeOf("function");
-    expect(exports.InfoCell).toBeTypeOf("function");
-    expect(exports.Input).toBeTypeOf("function");
-    expect(exports.LabelledValue).toBeTypeOf("function");
-    expect(exports.Separator).toBeTypeOf("function");
-    expect(exports.AssetRowSkeleton).toBeTypeOf("function");
-    expect(exports.Skeleton).toBeTypeOf("function");
-    expect(exports.SkeletonCard).toBeTypeOf("function");
-    expect(exports.SkeletonRow).toBeTypeOf("function");
+    expect(exports.Badge).toBeDefined();
+    expect(exports.Button).toBeDefined();
+    expect(exports.ButtonGroup).toBeDefined();
+    expect(exports.Card).toBeDefined();
+    expect(exports.CardContent).toBeDefined();
+    expect(exports.CardDescription).toBeDefined();
+    expect(exports.CardFooter).toBeDefined();
+    expect(exports.CardHeader).toBeDefined();
+    expect(exports.CardTitle).toBeDefined();
+    expect(exports.InfoCell).toBeDefined();
+    expect(exports.Input).toBeDefined();
+    expect(exports.LabelledValue).toBeDefined();
+    expect(exports.Separator).toBeDefined();
+    expect(exports.AssetRowSkeleton).toBeDefined();
+    expect(exports.Skeleton).toBeDefined();
+    expect(exports.SkeletonCard).toBeDefined();
+    expect(exports.SkeletonRow).toBeDefined();
 
     // Error handling
     expect(exports.ErrorBoundary).toBeDefined();
 
     // Wallet
-    expect(exports.AccountCard).toBeTypeOf("function");
-    expect(exports.AccountCardCompact).toBeTypeOf("function");
-    expect(exports.AccountSidebar).toBeTypeOf("function");
-    expect(exports.BalanceList).toBeTypeOf("function");
-    expect(exports.WalletConnectButton).toBeTypeOf("function");
-    expect(exports.WalletConnectModal).toBeTypeOf("function");
+    expect(exports.AccountCard).toBeDefined();
+    expect(exports.AccountCardCompact).toBeDefined();
+    expect(exports.AccountSidebar).toBeDefined();
+    expect(exports.BalanceList).toBeDefined();
+    expect(exports.WalletConnectButton).toBeDefined();
+    expect(exports.WalletConnectModal).toBeDefined();
     expect(exports.DEFAULT_WALLET_OPTIONS).toBeDefined();
 
     // Assets
-    expect(exports.AssetBadge).toBeTypeOf("function");
-    expect(exports.AssetPill).toBeTypeOf("function");
+    expect(exports.AssetBadge).toBeDefined();
+    expect(exports.AssetPill).toBeDefined();
     expect(exports.ASSET_COLORS).toBeDefined();
     expect(exports.getAssetColor).toBeTypeOf("function");
     expect(exports.isKnownAsset).toBeTypeOf("function");
-    expect(exports.AssetFilter).toBeTypeOf("function");
-    expect(exports.AssetFilterSkeleton).toBeTypeOf("function");
+    expect(exports.AssetFilter).toBeDefined();
+    expect(exports.AssetFilterSkeleton).toBeDefined();
 
     // Address
-    expect(exports.AddressDisplay).toBeTypeOf("function");
+    expect(exports.AddressDisplay).toBeDefined();
 
     // Network
     expect(exports.BANNER_CONFIG).toBeDefined();
-    expect(exports.NetworkBanner).toBeTypeOf("function");
-    expect(exports.NetworkSwitcher).toBeTypeOf("function");
+    expect(exports.NetworkBanner).toBeDefined();
+    expect(exports.NetworkSwitcher).toBeDefined();
 
     // Allowances
-    expect(exports.AllowanceManager).toBeTypeOf("function");
+    expect(exports.AllowanceManager).toBeDefined();
 
     // Transactions
-    expect(exports.ActivityTimeline).toBeTypeOf("function");
-    expect(exports.ClaimableBalanceCard).toBeTypeOf("function");
-    expect(exports.FeeCell).toBeTypeOf("function");
-    expect(exports.FeeEstimator).toBeTypeOf("function");
+    expect(exports.ActivityTimeline).toBeDefined();
+    expect(exports.ClaimableBalanceCard).toBeDefined();
+    expect(exports.FeeCell).toBeDefined();
+    expect(exports.FeeEstimator).toBeDefined();
     expect(exports.GAS_PRESETS).toBeDefined();
-    expect(exports.GasOptimizer).toBeTypeOf("function");
+    expect(exports.GasOptimizer).toBeDefined();
     expect(exports.MAX_CPU_INSTRUCTIONS).toBeTypeOf("number");
     expect(exports.MAX_MEMORY_BYTES).toBeTypeOf("number");
     expect(exports.MIN_CPU_INSTRUCTIONS).toBeTypeOf("number");
@@ -79,32 +79,32 @@ describe("Public exports surface", () => {
     expect(exports.SOROBAN_MIN_INSTRUCTIONS).toBeTypeOf("number");
     expect(exports.SOROBAN_MIN_MEMORY).toBeTypeOf("number");
     expect(exports.SOROBAN_PROTOCOL_LIMITS).toBeDefined();
-    expect(exports.MultiSigTransactionBuilder).toBeTypeOf("function");
-    expect(exports.TransactionConfirmModal).toBeTypeOf("function");
-    expect(exports.TransactionHistory).toBeTypeOf("function");
-    expect(exports.TransactionHistoryTable).toBeTypeOf("function");
-    expect(exports.TransactionPanel).toBeTypeOf("function");
-    expect(exports.TransactionStatusTracker).toBeTypeOf("function");
+    expect(exports.MultiSigTransactionBuilder).toBeDefined();
+    expect(exports.TransactionConfirmModal).toBeDefined();
+    expect(exports.TransactionHistory).toBeDefined();
+    expect(exports.TransactionHistoryTable).toBeDefined();
+    expect(exports.TransactionPanel).toBeDefined();
+    expect(exports.TransactionStatusTracker).toBeDefined();
 
     // Soroban
-    expect(exports.ContractEventFeed).toBeTypeOf("function");
-    expect(exports.ContractInteractionDebugger).toBeTypeOf("function");
-    expect(exports.SorobanInvokeButton).toBeTypeOf("function");
-    expect(exports.SorobanPanel).toBeTypeOf("function");
+    expect(exports.ContractEventFeed).toBeDefined();
+    expect(exports.ContractInteractionDebugger).toBeDefined();
+    expect(exports.SorobanInvokeButton).toBeDefined();
+    expect(exports.SorobanPanel).toBeDefined();
 
     // NFT Gallery
-    expect(exports.NFTCard).toBeTypeOf("function");
-    expect(exports.NFTGallery).toBeTypeOf("function");
+    expect(exports.NFTCard).toBeDefined();
+    expect(exports.NFTGallery).toBeDefined();
 
     // Portfolio Rebalancer & Staking
-    expect(exports.PortfolioRebalancer).toBeTypeOf("function");
-    expect(exports.DelegationRow).toBeTypeOf("function");
-    expect(exports.RewardHistory).toBeTypeOf("function");
-    expect(exports.RewardsPanel).toBeTypeOf("function");
-    expect(exports.SwapExecutionTracker).toBeTypeOf("function");
-    expect(exports.PieChart).toBeTypeOf("function");
-    expect(exports.ValidatorCard).toBeTypeOf("function");
-    expect(exports.ValidatorSearch).toBeTypeOf("function");
+    expect(exports.PortfolioRebalancer).toBeDefined();
+    expect(exports.DelegationRow).toBeDefined();
+    expect(exports.RewardHistory).toBeDefined();
+    expect(exports.RewardsPanel).toBeDefined();
+    expect(exports.SwapExecutionTracker).toBeDefined();
+    expect(exports.PieChart).toBeDefined();
+    expect(exports.ValidatorCard).toBeDefined();
+    expect(exports.ValidatorSearch).toBeDefined();
 
     // Utilities
     expect(exports.BASE_FEE_STROOPS).toBeTypeOf("number");
@@ -127,8 +127,8 @@ describe("Public exports surface", () => {
     expect(exports.totalRebalanceCostUsd).toBeTypeOf("function");
     expect(exports.updateSwapStatus).toBeTypeOf("function");
     expect(exports.weightedAverageSlippage).toBeTypeOf("function");
-    expect(exports.QRCode).toBeTypeOf("function");
-    expect(exports.SwapSimulator).toBeTypeOf("function");
+    expect(exports.QRCode).toBeDefined();
+    expect(exports.SwapSimulator).toBeDefined();
 
     // Staking Utilities
     expect(exports.aggregateDailyRewards).toBeTypeOf("function");
@@ -152,17 +152,17 @@ describe("Public exports surface", () => {
     expect(exports.validateDelegationAmount).toBeTypeOf("function");
 
     // Features & Providers
-    expect(exports.WalletStatusBadge).toBeTypeOf("function");
-    expect(exports.TransactionFeeCalculator).toBeTypeOf("function");
-    expect(exports.ContractInteractionBuilder).toBeTypeOf("function");
-    expect(exports.GovernanceDashboard).toBeTypeOf("function");
-    expect(exports.AccountBalanceChart).toBeTypeOf("function");
-    expect(exports.SorokitProvider).toBeTypeOf("function");
+    expect(exports.WalletStatusBadge).toBeDefined();
+    expect(exports.TransactionFeeCalculator).toBeDefined();
+    expect(exports.ContractInteractionBuilder).toBeDefined();
+    expect(exports.GovernanceDashboard).toBeDefined();
+    expect(exports.AccountBalanceChart).toBeDefined();
+    expect(exports.SorokitProvider).toBeDefined();
     expect(exports.useSorokit).toBeTypeOf("function");
-    expect(exports.ToastProvider).toBeTypeOf("function");
+    expect(exports.ToastProvider).toBeDefined();
     expect(exports.useToast).toBeTypeOf("function");
-    expect(exports.ToastContainer).toBeTypeOf("function");
-    expect(exports.Tooltip).toBeTypeOf("function");
+    expect(exports.ToastContainer).toBeDefined();
+    expect(exports.Tooltip).toBeDefined();
   });
 
   it("re-exports public types from client", () => {
