@@ -163,9 +163,11 @@ function copyViaExecCommand(text: string): boolean {
 import { useFeeData } from "@/hooks/useFeeData";
 import { useIsVisible } from "@/hooks/useIsVisible";
 
+const DEFAULT_OPERATIONS = ["payment"];
+
 export function GasOptimizer({
   className,
-  operations = ["payment"],
+  operations = DEFAULT_OPERATIONS,
   refreshInterval = 0,
   onExport,
 }: GasOptimizerProps) {
@@ -262,7 +264,7 @@ export function GasOptimizer({
     return () => {
       window.clearTimeout(timerId);
     };
-  }, [loadGasData, refreshInterval]);
+  }, [loadGasData, refreshInterval, isVisible]);
 
   useEffect(() => {
     if (!estimate) return;

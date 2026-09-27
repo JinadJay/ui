@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSorokit } from "@/context/useSorokit";
-import { useIsVisible } from "@/hooks/useIsVisible";
 import type { FeeData } from "@/components/FeeEstimator"; // Or wherever it's defined
 
 let globalFeeData: FeeData | null = null;
@@ -15,10 +14,9 @@ function notify() {
 let activeInterval: number | null = null;
 let pollingCount = 0;
 
-export function useFeeData(refreshInterval = 0) {
+export function useFeeData(refreshInterval = 0, isVisible: boolean = true) {
   const { client } = useSorokit();
   const [, forceRender] = useState({});
-  const [, isVisible] = useIsVisible();
 
   const load = useCallback(async () => {
     if (!client || globalLoading) return;
@@ -48,13 +46,19 @@ export function useFeeData(refreshInterval = 0) {
     subscribers.add(cb);
     return () => {
       subscribers.delete(cb);
+      if (subscribers.size === 0) {
+        globalFeeData = null;
+        globalLoading = false;
+        globalError = null;
+      }
     };
   }, []);
 
   useEffect(() => {
     if (!isVisible || !client) return;
 
-    if (!globalFeeData && !globalLoading && !globalError) {
+    // Always fetch immediately on mount/resume, unless already loading
+    if (!globalLoading) {
       void load();
     }
 

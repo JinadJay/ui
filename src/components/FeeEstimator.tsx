@@ -84,20 +84,17 @@ export function FeeEstimator({
     onFeeLoadRef.current = onFeeLoad;
   }, [onFeeLoad]);
   // Issue #442: generation counter - an estimate that resolves after a newer
-  // one started is discarded rather than overwriting fresher data.
-  const requestIdRef = useRef(0);
-
-  const { fee, loading: hookLoading, error: hookError, load: hookLoad } = useFeeData(refreshInterval);
+  const { fee: hookFee, loading: hookLoading, error: hookError, load: hookLoad } = useFeeData(refreshInterval, isVisible);
   
   useEffect(() => {
-    if (fee) {
-      setFee(fee);
+    if (hookFee) {
+      setFee(hookFee);
       setError(null);
-      onFeeLoadRef.current?.(fee);
+      onFeeLoadRef.current?.(hookFee);
     }
     setLoading(hookLoading);
     if (hookError) setError(hookError);
-  }, [fee, hookLoading, hookError]);
+  }, [hookFee, hookLoading, hookError]);
 
   const load = useCallback(async () => {
     await hookLoad();

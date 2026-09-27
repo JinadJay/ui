@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -718,26 +718,30 @@ describe("GasOptimizer", () => {
     it("pauses polling when isVisible is false and resumes when true", async () => {
       vi.useFakeTimers();
       
-      // Mock useIsVisible to return our controlled state
-      let currentIsVisible = true;
-      const setVisibleMock = vi.fn();
+      let observerCallback: IntersectionObserverCallback | undefined;
+      vi.stubGlobal(
+        "IntersectionObserver",
+        vi.fn((cb) => {
+          observerCallback = cb;
+          return {
+            observe: vi.fn(),
+            unobserve: vi.fn(),
+            disconnect: vi.fn(),
+          };
+        })
+      );
       
-      // Override the module for this test
-      vi.doMock("@/hooks/useIsVisible", () => ({
-        useIsVisible: () => [{ current: null }, currentIsVisible, setVisibleMock]
-      }));
-      
-      const { GasOptimizer: GasOptimizerWithMock } = await import("./GasOptimizer");
       const { getGasPrice } = mockClient();
       
-      const { unmount, rerender } = render(<GasOptimizerWithMock refreshInterval={5000} />);
+      const { unmount } = render(<GasOptimizer refreshInterval={5000} />);
       
       await vi.runOnlyPendingTimersAsync();
       const count1 = getGasPrice.mock.calls.length;
       
       // Change visibility to false
-      currentIsVisible = false;
-      rerender(<GasOptimizerWithMock refreshInterval={5000} />);
+      act(() => {
+        observerCallback?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver);
+      });
       
       // Advance timers by multiple intervals
       await act(async () => {
@@ -748,8 +752,9 @@ describe("GasOptimizer", () => {
       expect(getGasPrice.mock.calls.length).toBe(count1);
       
       // Change visibility to true
-      currentIsVisible = true;
-      rerender(<GasOptimizerWithMock refreshInterval={5000} />);
+      act(() => {
+        observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+      });
       
       // Wait for immediate resumption effect
       await vi.runOnlyPendingTimersAsync();
@@ -761,8 +766,8 @@ describe("GasOptimizer", () => {
       
       expect(getGasPrice.mock.calls.length).toBeGreaterThan(count1);
       
-      vi.doUnmock("@/hooks/useIsVisible");
       vi.useRealTimers();
+      vi.unstubAllGlobals();
     });
   });
 });

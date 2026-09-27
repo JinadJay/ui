@@ -127,6 +127,7 @@ describe("NetworkScreen", () => {
     // Resolve the switch
     await act(async () => {
       resolveSwitch!({ data: { name: "mainnet" }, error: null });
+    });
   });
 
   // #753 Verify estimateFee is not called twice when both FeeEstimator and GasOptimizer are rendered
@@ -143,7 +144,7 @@ describe("NetworkScreen", () => {
       client: {
         transaction: {
           estimateFee,
-          estimateDetailedFee: vi.fn().mockResolvedValue({ data: {} }),
+          estimateDetailedFee: vi.fn().mockResolvedValue({ data: { breakdown: [], totalGasUnits: 0, scenarios: [] } }),
           getFeeScenarios: vi.fn().mockResolvedValue({ data: [] }),
         },
         network: {
