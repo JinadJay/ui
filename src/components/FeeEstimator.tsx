@@ -100,6 +100,15 @@ export function FeeEstimator({
     await hookLoad();
   }, [hookLoad]);
 
+  useEffect(() => {
+    return () => {
+      if (intervalIdRef.current !== null) {
+        clearInterval(intervalIdRef.current);
+        intervalIdRef.current = null;
+      }
+    };
+  }, []);
+
   const compactContent = fee
     ? `Base: ${fee.baseFee} stroops · Recommended: ${fee.recommended} stroops`
     : null;
