@@ -9,6 +9,11 @@ vi.mock("@/context/useSorokit", () => ({
   useSorokit: vi.fn(),
 }));
 
+const successToast = vi.fn();
+vi.mock("@/context/ToastContext", () => ({
+  useToast: () => ({ success: successToast }),
+}));
+
 describe("AccountCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
