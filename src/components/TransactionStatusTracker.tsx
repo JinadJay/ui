@@ -288,7 +288,7 @@ export function TransactionStatusTracker({
     };
 
     void pollTransactions();
-    const timerId = window.setInterval(() => {
+    const timerId: ReturnType<typeof setInterval> = window.setInterval(() => {
       void pollTransactions();
     }, pollIntervalMs);
 
