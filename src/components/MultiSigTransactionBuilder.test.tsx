@@ -78,6 +78,21 @@ describe("MultiSigTransactionBuilder", () => {
     expect(screen.getByRole("button", { name: /next/i })).toBeDisabled();
   });
 
+  it("rejects a threshold greater than the number of configured signers", () => {
+    render(<MultiSigTransactionBuilder />);
+
+    fireEvent.click(screen.getByRole("button", { name: /add signer/i }));
+    fireEvent.change(screen.getByLabelText(/threshold/i), { target: { value: "3" } });
+
+    expect(screen.getByText(/Threshold exceeds available weight/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /next/i })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/threshold/i), { target: { value: "2" } });
+
+    expect(screen.queryByText(/Threshold exceeds available weight/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /next/i })).not.toBeDisabled();
+  });
+
   it("keeps signer keys unique when adding after removing a middle signer", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<MultiSigTransactionBuilder />);
