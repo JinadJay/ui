@@ -1,12 +1,13 @@
 import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 
 import { AddressDisplay } from "@/components/AddressDisplay";
 import { Badge } from "@/components/ui/Badge";
 import { LabelledValue } from "@/components/ui/LabelledValue";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useSorokit } from "@/context/useSorokit";
+import { useToast } from "@/context/ToastContext";
 import { truncateAddress } from "@/lib/utils";
 
 function getStellarExpertUrl(address: string, networkName?: string) {
@@ -26,16 +27,10 @@ const BASE_RESERVE_XLM = 0.5;
 
 export function AccountCard() {
   const { address, account, isLoadingAccount, network } = useSorokit();
+  const { success } = useToast();
   const sequenceLabelId = useId();
   const [showSequenceTooltip, setShowSequenceTooltip] = useState(false);
-  const [toastVisible, setToastVisible] = useState(false);
   const [showThresholds, setShowThresholds] = useState(false);
-
-  useEffect(() => {
-    if (!toastVisible) return;
-    const id = window.setTimeout(() => setToastVisible(false), 3000);
-    return () => window.clearTimeout(id);
-  }, [toastVisible]);
 
   if (!address) return null;
 
@@ -71,7 +66,11 @@ export function AccountCard() {
               address={address}
               showFull
               label="Address"
-              onCopy={() => setToastVisible(true)}
+              onCopy={() =>
+                success("Address Copied", {
+                  message: "The address has been copied to your clipboard.",
+                })
+              }
             />
             <a
               href={getStellarExpertUrl(address, network?.name) ?? undefined}
@@ -170,17 +169,6 @@ export function AccountCard() {
           </div>
         )}
       </div>
-      {toastVisible && (
-        <div
-          role="status"
-          className="fixed bottom-6 right-6 z-50 bg-surface border border-line rounded-md px-4 py-3 shadow-lg animate-in fade-in slide-in-from-bottom-2"
-        >
-          <p className="text-[13px] font-semibold text-ink">Address Copied</p>
-          <p className="text-[12px] text-ink-3">
-            The address has been copied to your clipboard.
-          </p>
-        </div>
-      )}
     </div>
   );
 }
