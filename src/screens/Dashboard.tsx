@@ -1,9 +1,11 @@
 import { type ComponentType, lazy, Suspense, useCallback, useEffect, useState } from "react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { GovernanceDashboard } from "@/components/GovernanceDashboard";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { type NavSection, Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
+import { PAGE_TITLES } from "@/lib/nav-labels";
 import { AccountScreen } from "@/screens/AccountScreen";
 import { WalletScreen } from "@/screens/WalletScreen";
 
@@ -38,19 +40,6 @@ const YieldFarmingScreen = lazy(() =>
   })),
 );
 
-const PAGE_TITLES: Record<NavSection, string> = {
-  wallet: "Wallet — Sorokit",
-  account: "Account — Sorokit",
-  transactions: "Transactions — Sorokit",
-  soroban: "Soroban — Sorokit",
-  network: "Network — Sorokit",
-  recovery: "Recovery — Sorokit",
-  charts: "Charts — Sorokit",
-  farming: "Yield Farming — Sorokit",
-  budget: "Budget — Sorokit",
-  nfts: "NFTs — Sorokit",
-};
-
 const SCREENS: Record<NavSection, ComponentType> = {
   wallet: WalletScreen,
   account: AccountScreen,
@@ -62,6 +51,7 @@ const SCREENS: Record<NavSection, ComponentType> = {
   farming: YieldFarmingScreen,
   budget: BudgetScreen,
   nfts: NFTScreen,
+  governance: GovernanceDashboard,
 };
 
 const SCREEN_LABELS: Record<NavSection, string> = {
@@ -75,6 +65,7 @@ const SCREEN_LABELS: Record<NavSection, string> = {
   farming: "Yield Farming",
   budget: "Budget",
   nfts: "NFTs",
+  governance: "Governance",
 };
 
 /**
@@ -137,6 +128,9 @@ export function Dashboard({
 
   const active = isControlled ? activeSection : internalActive;
 
+  // Keep the browser tab title in sync with the active screen (#551) — screen
+  // readers, multi-tab users and history entries all rely on it. Runs on mount
+  // as well, so the Wallet default is applied without waiting for a nav click.
   useEffect(() => {
     document.title = PAGE_TITLES[active];
   }, [active]);

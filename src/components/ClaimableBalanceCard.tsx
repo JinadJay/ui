@@ -204,6 +204,13 @@ export function ClaimableBalanceCard({ confirmThreshold }: ClaimableBalanceCardP
   // Issue #441: bumped after every successful claim to re-fetch the list so it
   // stays server-consistent.
   const [refreshKey, setRefreshKey] = useState(0);
+  // Issue #666: tick once a second so predicate deadlines flip to "Expired"
+  // live, without requiring a page refresh.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   // Issue #441: ids claimed in this session. Horizon can still return a just
   // claimed balance for a short while, so the re-fetch is filtered against this
   // set - otherwise the row the user just claimed would pop back in.

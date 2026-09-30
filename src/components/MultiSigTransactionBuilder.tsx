@@ -1,8 +1,11 @@
+import { Copy01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/utils";
 
 type Step = 0 | 1 | 2 | 3;
@@ -22,6 +25,33 @@ interface BuilderState {
   notes: string;
 }
 
+function isValidSigner(obj: unknown): obj is Signer {
+  if (!obj || typeof obj !== "object") return false;
+  const s = obj as Record<string, unknown>;
+  return (
+    typeof s.id === "string" &&
+    typeof s.address === "string" &&
+    typeof s.weight === "number" &&
+    !Number.isNaN(s.weight) &&
+    typeof s.signed === "boolean"
+  );
+}
+
+function isValidBuilderState(parsed: unknown): parsed is BuilderState {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+  const s = parsed as Record<string, unknown>;
+  if ("signers" in s && s.signers !== undefined) {
+    if (!Array.isArray(s.signers) || !s.signers.every(isValidSigner)) return false;
+  }
+  if ("threshold" in s && s.threshold !== undefined) {
+    if (typeof s.threshold !== "number" || Number.isNaN(s.threshold)) return false;
+  }
+  if ("xdr" in s && s.xdr !== undefined && typeof s.xdr !== "string") return false;
+  if ("status" in s && s.status !== undefined && typeof s.status !== "string") return false;
+  if ("notes" in s && s.notes !== undefined && typeof s.notes !== "string") return false;
+  return true;
+}
+
 const STORAGE_KEY = "sorokit-multisig-builder-state";
 const memoryStorage = new Map<string, string>();
 
@@ -37,7 +67,10 @@ function getStorage() {
     // Ignore storage access failures in non-browser or restricted environments.
   }
 
-  const shim = {
+  // Issue #654: return an in-memory shim instead of redefining
+  // `window.localStorage`, which mutated the global and contaminated JSDOM
+  // test suites and other components.
+  return {
     getItem: (key: string) => memoryStorage.get(key) ?? null,
     setItem: (key: string, value: string) => {
       memoryStorage.set(key, value);
@@ -49,20 +82,21 @@ function getStorage() {
       memoryStorage.clear();
     },
   };
-
-  try {
-    Object.defineProperty(window, "localStorage", {
-      configurable: true,
-      value: shim,
-    });
-  } catch {
-    // Ignore if the environment prevents overriding the storage object.
-  }
-
-  return shim;
 }
 
-function createSigner(id: string): Signer {
+let signerSequence = 0;
+
+/** Issue #654: generate collision-free signer ids so removing a middle signer
+ *  and adding a new one cannot produce duplicate React keys. */
+function uniqueSignerId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `signer-${crypto.randomUUID()}`;
+  }
+  signerSequence += 1;
+  return `signer-${Date.now()}-${signerSequence}`;
+}
+
+function createSigner(id: string = uniqueSignerId()): Signer {
   return { id, address: "", weight: 1, signed: false };
 }
 
@@ -87,13 +121,14 @@ function validateThreshold(signers: Signer[], threshold: number) {
 
 export function MultiSigTransactionBuilder() {
   const [step, setStep] = useState<Step>(0);
-  const [signers, setSigners] = useState<Signer[]>([createSigner("signer-1")]);
+  const [signers, setSigners] = useState<Signer[]>([createSigner()]);
   const [threshold, setThreshold] = useState(1);
   const [xdr, setXdr] = useState("<tx:xdr:placeholder>");
   const [status, setStatus] = useState("Draft");
   const [notes, setNotes] = useState("");
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [loadedMessage, setLoadedMessage] = useState<string | null>(null);
+  const { success: showSuccessToast } = useToast();
 
   const { totalWeight, valid } = useMemo(() => validateThreshold(signers, threshold), [signers, threshold]);
 
@@ -108,7 +143,7 @@ export function MultiSigTransactionBuilder() {
   }
 
   function addSigner() {
-    setSigners((current) => [...current, createSigner(`signer-${current.length + 1}`)]);
+    setSigners((current) => [...current, createSigner()]);
   }
 
   function removeSigner(index: number) {
@@ -144,8 +179,19 @@ export function MultiSigTransactionBuilder() {
       return;
     }
     try {
-      const parsed = JSON.parse(raw) as BuilderState;
-      setSigners(parsed.signers ?? [createSigner("signer-1")]);
+      const parsed = JSON.parse(raw);
+      if (!isValidBuilderState(parsed)) {
+        storage.removeItem(STORAGE_KEY);
+        setSigners([createSigner()]);
+        setThreshold(1);
+        setXdr("<tx:xdr:placeholder>");
+        setStatus("Draft");
+        setNotes("");
+        setStep(0);
+        setLoadedMessage("Saved state was corrupt or invalid and has been reset");
+        return;
+      }
+      setSigners(parsed.signers ?? [createSigner()]);
       setThreshold(parsed.threshold ?? 1);
       setXdr(parsed.xdr ?? "<tx:xdr:placeholder>");
       setStatus(parsed.status ?? "Draft");
@@ -153,7 +199,14 @@ export function MultiSigTransactionBuilder() {
       setStep(1);
       setLoadedMessage("Loaded saved transaction");
     } catch {
-      setLoadedMessage("Unable to load saved transaction");
+      storage.removeItem(STORAGE_KEY);
+      setSigners([createSigner()]);
+      setThreshold(1);
+      setXdr("<tx:xdr:placeholder>");
+      setStatus("Draft");
+      setNotes("");
+      setStep(0);
+      setLoadedMessage("Saved state was corrupt or invalid and has been reset");
     }
   }
 
@@ -279,7 +332,23 @@ export function MultiSigTransactionBuilder() {
               <p className="mt-1 text-[12px] text-ink-3">{notes || "No notes provided."}</p>
             </div>
             <div className="rounded-lg border border-line bg-surface-2 p-4">
-              <p className="text-[12px] font-semibold text-ink">Prepared XDR</p>
+              <div className="flex items-center justify-between">
+                <p className="text-[12px] font-semibold text-ink">Prepared XDR</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-ink-3 hover:text-ink-2 h-auto py-1 px-2 text-[11px]"
+                  onClick={() => {
+                    navigator.clipboard.writeText(xdr).catch(() => {});
+                    showSuccessToast("XDR copied to clipboard");
+                  }}
+                  title="Copy XDR"
+                  aria-label="Copy XDR to clipboard"
+                >
+                  <HugeiconsIcon icon={Copy01Icon} size={14} className="mr-1 inline-block" />
+                  Copy
+                </Button>
+              </div>
               <pre className="mt-2 whitespace-pre-wrap break-all text-[12px] font-mono text-ink-2">{xdr}</pre>
             </div>
           </div>
@@ -289,7 +358,13 @@ export function MultiSigTransactionBuilder() {
       <div className="flex flex-wrap items-center justify-between border-t border-line px-6 py-4">
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={prevStep} disabled={step === 0}>Previous</Button>
-          <Button size="sm" onClick={nextStep} disabled={step === 3}>Next</Button>
+          <Button
+            size="sm"
+            onClick={nextStep}
+            disabled={step === 3 || (step === 0 && !valid)}
+          >
+            Next
+          </Button>
         </div>
         <p className="text-[12px] text-ink-3">Last updated {formatTimestamp(new Date().toISOString())}</p>
       </div>

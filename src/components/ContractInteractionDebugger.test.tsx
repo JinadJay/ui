@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ContractInteractionDebugger } from "./ContractInteractionDebugger";
+import { addDebugHistory, ContractInteractionDebugger, createDebuggerEntry } from "./ContractInteractionDebugger";
 
 describe("ContractInteractionDebugger", () => {
   beforeEach(() => {
@@ -135,10 +135,34 @@ describe("ContractInteractionDebugger", () => {
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("C123"));
 
+    // handleCopy awaits the clipboard write before recording the invocation, so
+    // the history entry lands in a microtask after the click; wait for it.
+    await waitFor(() => {
+      expect(
+        window.sessionStorage.getItem("sorokit-soroban-debug-history"),
+      ).toBeTruthy();
+    });
+    const stored = window.sessionStorage.getItem("sorokit-soroban-debug-history");
+    const parsed = JSON.parse(stored ?? "[]");
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].contractId).toBe("C123");
+  });
+
+  it("verifies a new invocation appends to history", () => {
+    const entry = createDebuggerEntry({
+      contractId: "C-NEW",
+      method: "mint",
+      args: ["user1", 100],
+      state: "success",
+    });
+
+    addDebugHistory(entry, []);
+
     const stored = window.sessionStorage.getItem("sorokit-soroban-debug-history");
     expect(stored).toBeTruthy();
     const parsed = JSON.parse(stored ?? "[]");
     expect(parsed).toHaveLength(1);
-    expect(parsed[0].contractId).toBe("C123");
+    expect(parsed[0].contractId).toBe("C-NEW");
+    expect(parsed[0].method).toBe("mint");
   });
 });

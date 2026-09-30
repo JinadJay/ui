@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useSorokit } from "@/context/useSorokit";
 
-import { ContractInteractionDebugger } from "./ContractInteractionDebugger";
+import { addDebugHistory, ContractInteractionDebugger, createDebuggerEntry, type DebuggerEntry, readDebugHistory } from "./ContractInteractionDebugger";
 
 type State = "idle" | "loading" | "success" | "error";
 
@@ -98,6 +98,9 @@ export function SorobanPanel({
   const [contractHistory, setContractHistory] = useState<string[]>(() =>
     readContractHistory(),
   );
+  const [debugHistory, setDebugHistory] = useState<DebuggerEntry[]>(() =>
+    readDebugHistory(),
+  );
   const [abiOpen, setAbiOpen] = useState(false);
   const [abiRaw, setAbiRaw] = useState("");
   const [abiMethods, setAbiMethods] = useState<string[]>([]);
@@ -166,6 +169,7 @@ export function SorobanPanel({
         if (err) {
           setError(err);
           setState("error");
+          setDebugHistory((prev) => addDebugHistory(createDebuggerEntry({ contractId: contractId.trim(), method: method.trim(), args: parsedArgs, state: "error", error: err }), prev));
           return;
         }
         setResult(data);
@@ -174,6 +178,7 @@ export function SorobanPanel({
         setContractHistory((prev) =>
           addContractToHistory(contractId.trim(), prev),
         );
+        setDebugHistory((prev) => addDebugHistory(createDebuggerEntry({ contractId: contractId.trim(), method: method.trim(), args: parsedArgs, state: "success", result: data, txHash: extractTxHash(data) }), prev));
       } else {
         const { data, error: err } = await soroban.invokeContract({
           contractId: contractId.trim(),
@@ -185,6 +190,7 @@ export function SorobanPanel({
         if (err) {
           setError(err);
           setState("error");
+          setDebugHistory((prev) => addDebugHistory(createDebuggerEntry({ contractId: contractId.trim(), method: method.trim(), args: parsedArgs, state: "error", error: err }), prev));
           return;
         }
         setResult(data);
@@ -193,6 +199,7 @@ export function SorobanPanel({
         setContractHistory((prev) =>
           addContractToHistory(contractId.trim(), prev),
         );
+        setDebugHistory((prev) => addDebugHistory(createDebuggerEntry({ contractId: contractId.trim(), method: method.trim(), args: parsedArgs, state: "success", result: data, txHash: extractTxHash(data) }), prev));
       }
     } catch (e: unknown) {
       if (signal.aborted) return;
@@ -204,6 +211,7 @@ export function SorobanPanel({
             : "An unexpected error occurred while invoking the contract.";
       setError(message);
       setState("error");
+      setDebugHistory((prev) => addDebugHistory(createDebuggerEntry({ contractId: contractId.trim(), method: method.trim(), args: parseArgsInput(argsRef.current).parsedArgs, state: "error", error: message }), prev));
     }
   }
 
@@ -322,49 +330,38 @@ export function SorobanPanel({
                 </datalist>
               )}
             </div>
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="soroban-args"
-                className="text-[12px] font-medium text-ink-2"
-              >
-                Arguments (JSON array)
-              </label>
-              <textarea
-                id="soroban-args"
-                placeholder='["arg1", 42]'
-                value={args}
-                onChange={(e) => setArgs(e.target.value)}
-                onInput={(e) => {
-                  const textarea = e.currentTarget;
-                  textarea.rows = Math.max(
-                    3,
-                    textarea.value.split("\n").length,
-                  );
-                  textarea.style.height = "auto";
-                  textarea.style.height = `${textarea.scrollHeight}px`;
-                }}
-                onKeyDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                    e.preventDefault();
-                    void doInvoke();
-                  }
-                }}
-                disabled={state === "loading"}
-                rows={4}
-                aria-invalid={args.trim() !== "" && !isArgsJsonValid}
-                aria-describedby={
-                  args.trim() !== "" && !isArgsJsonValid
-                    ? "soroban-args-error"
-                    : undefined
+            {/* Issue #542: reuse the Input component's label-association logic
+                (htmlFor + aria-describedby) instead of a hand-wired textarea. */}
+            <Input
+              label="Arguments (JSON array)"
+              multiline
+              placeholder='["arg1", 42]'
+              value={args}
+              onChange={(e) => setArgs(e.target.value)}
+              onInput={(e) => {
+                const textarea = e.currentTarget as unknown as HTMLTextAreaElement;
+                textarea.rows = Math.max(
+                  3,
+                  textarea.value.split("\n").length,
+                );
+                textarea.style.height = "auto";
+                textarea.style.height = `${textarea.scrollHeight}px`;
+              }}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  void doInvoke();
                 }
-                className="w-full resize-y min-h-[80px] rounded-lg border border-line bg-surface-2 px-4 py-3 text-[13px] font-mono text-ink placeholder:text-ink-4 outline-none focus:border-line-2 focus:ring-1 focus:ring-brand-dim transition-colors disabled:opacity-40"
-              />
-              {args.trim() !== "" && !isArgsJsonValid && (
-                <p id="soroban-args-error" className="text-[11px] text-red">
-                  Invalid JSON in arguments
-                </p>
-              )}
-            </div>
+              }}
+              disabled={state === "loading"}
+              rows={4}
+              error={
+                args.trim() !== "" && !isArgsJsonValid
+                  ? "Invalid JSON in arguments"
+                  : undefined
+              }
+              className="font-mono min-h-[80px]"
+            />
 
             {state !== "idle" && (
               <div className="relative min-h-32" aria-live="polite">
@@ -391,6 +388,7 @@ export function SorobanPanel({
                       <Button
                         variant="secondary"
                         size="sm"
+                        data-testid="soroban-copy-curl-success"
                         onClick={() => {
                           const curl = buildCurlCommand(contractId.trim(), method.trim(), parseArgsInput(args).parsedArgs);
                           navigator.clipboard.writeText(curl);
@@ -416,6 +414,8 @@ export function SorobanPanel({
                     result={result}
                     txHash={txHash}
                     error={error}
+                    history={debugHistory}
+                    onHistoryChange={setDebugHistory}
                   />
                 )}
 
@@ -430,6 +430,7 @@ export function SorobanPanel({
                     <Button
                       variant="secondary"
                       size="sm"
+                      data-testid="soroban-copy-curl-bottom"
                       onClick={handleCopyCurl}
                     >
                       Copy as cURL
@@ -447,6 +448,7 @@ export function SorobanPanel({
           <Button
             variant="ghost"
             size="sm"
+            data-testid="soroban-clear"
             onClick={() => {
               setState("idle");
               setResult(null);
@@ -460,6 +462,7 @@ export function SorobanPanel({
           <Button
             variant="ghost"
             size="sm"
+            data-testid="soroban-copy-curl-invoke"
             onClick={() => {
               const curl = buildCurlCommand(contractId.trim(), method.trim(), parseArgsInput(args).parsedArgs);
               navigator.clipboard.writeText(curl);
@@ -474,6 +477,7 @@ export function SorobanPanel({
           type="submit"
           form={formId}
           size="md"
+          data-testid="soroban-submit"
           loading={state === "loading"}
           // `canInvoke` already requires state !== "loading".
           disabled={!canInvoke}
@@ -491,6 +495,7 @@ export function SorobanPanel({
       <div className="border-t border-line">
         <button
           type="button"
+          data-testid="soroban-toggle-abi"
           onClick={() => setAbiOpen((v) => !v)}
           className="w-full flex items-center justify-between px-6 py-3 text-[12px] font-medium text-ink-2 hover:bg-surface-2 transition-colors"
         >
@@ -510,12 +515,13 @@ export function SorobanPanel({
               <p className="text-[11px] text-red">{abiError}</p>
             )}
             <div className="flex gap-2">
-              <Button size="sm" onClick={handleLoadAbi} disabled={!abiRaw.trim()}>
+              <Button size="sm" data-testid="soroban-load-abi" onClick={handleLoadAbi} disabled={!abiRaw.trim()}>
                 Load
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
+                data-testid="soroban-clear-abi"
                 onClick={() => {
                   setAbiRaw("");
                   setAbiError(null);

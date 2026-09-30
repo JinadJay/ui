@@ -1,4 +1,5 @@
-import { fireEvent,render, screen } from "@testing-library/react";
+import { fireEvent,render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach,describe, expect, it, vi } from "vitest";
 
 import { useSorokit } from "@/context/useSorokit";
@@ -20,6 +21,7 @@ describe("Sidebar", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     vi.mocked(useSorokit).mockReturnValue({
       isConnected: true,
     } as ReturnType<typeof useSorokit>);
@@ -31,6 +33,20 @@ describe("Sidebar", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /account/i }));
     expect(onNavigate).toHaveBeenCalledWith("account");
+  });
+
+  it("calls onNavigate before onClose when a nav item is selected", () => {
+    render(
+      <Sidebar active="wallet" onNavigate={onNavigate} open={false} onClose={onClose} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /account/i }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onNavigate.mock.invocationCallOrder[0]).toBeLessThan(
+      onClose.mock.invocationCallOrder[0],
+    );
   });
 
   it("calls onNavigate with each available section", () => {
@@ -107,14 +123,18 @@ describe("Sidebar", () => {
     expect(navElement).toHaveAttribute("aria-label", "Main navigation");
   });
 
-  it("reads localStorage on mount and pre-selects the saved section", () => {
+  it("reads localStorage on mount for visual selection without navigating", () => {
     localStorage.setItem("sorokit-active-nav", "network");
 
     render(
       <Sidebar active="wallet" onNavigate={onNavigate} open={false} onClose={onClose} />,
     );
 
-    expect(onNavigate).toHaveBeenCalledWith("network");
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /network/i })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     localStorage.removeItem("sorokit-active-nav");
   });
 
@@ -208,6 +228,120 @@ describe("Sidebar", () => {
       );
       fireEvent.click(screen.getByRole("button", { name: /sorokit/i }));
       expect(onNavigate).toHaveBeenCalledWith("wallet");
+    });
+  });
+
+  describe("issue #678 fixes", () => {
+    it("locks body scroll overflow to hidden when mobile navigation drawer is open and restores on close", () => {
+      document.body.style.overflow = "auto";
+
+      const { rerender } = render(
+        <Sidebar active="wallet" onNavigate={onNavigate} open={true} onClose={onClose} />,
+      );
+
+      expect(document.body.style.overflow).toBe("hidden");
+
+      rerender(
+        <Sidebar active="wallet" onNavigate={onNavigate} open={false} onClose={onClose} />,
+      );
+
+      expect(document.body.style.overflow).toBe("auto");
+
+      // Verify unmount cleanup when open
+      const { unmount: unmountOpen } = render(
+        <Sidebar active="wallet" onNavigate={onNavigate} open={true} onClose={onClose} />,
+      );
+      expect(document.body.style.overflow).toBe("hidden");
+      unmountOpen();
+      expect(document.body.style.overflow).toBe("auto");
+    });
+
+    it("highlights parent sidebar navigation item for nested routes", () => {
+      render(
+        <Sidebar active="/nfts/collection/123" onNavigate={onNavigate} open={false} onClose={onClose} />,
+      );
+
+      const nftsBtn = screen.getByRole("button", { name: /nfts/i });
+      expect(nftsBtn).toHaveAttribute("aria-current", "page");
+      expect(nftsBtn.className).toContain("bg-surface-3");
+    });
+
+    it("highlights parent item for nested section route without leading slash", () => {
+      render(
+        <Sidebar active="nfts/collection/456" onNavigate={onNavigate} open={false} onClose={onClose} />,
+      );
+
+      const nftsBtn = screen.getByRole("button", { name: /nfts/i });
+      expect(nftsBtn).toHaveAttribute("aria-current", "page");
+    });
+  });
+
+  describe("nav semantics and keyboard access (#550)", () => {
+    const NAV_ITEMS = [
+      "Wallet",
+      "Account",
+      "Transactions",
+      "Soroban",
+      "Network",
+      "Recovery Assistant",
+      "Advanced Charting",
+      "Yield Farming",
+      "Budget Manager",
+      "NFTs",
+      "Governance",
+    ];
+
+    it("renders every nav item as a natively focusable button, not a div", () => {
+      render(
+        <Sidebar active="wallet" onNavigate={onNavigate} open={false} onClose={onClose} />,
+      );
+
+      const nav = screen.getByRole("navigation", { name: "Main navigation" });
+      const navButtons = within(nav).getAllByRole("button");
+
+      expect(navButtons).toHaveLength(NAV_ITEMS.length);
+      navButtons.forEach((button, index) => {
+        expect(button.tagName).toBe("BUTTON");
+        expect(button).toHaveAttribute("type", "button");
+        expect(button).toHaveAccessibleName(NAV_ITEMS[index]);
+        expect(button).not.toHaveAttribute("tabindex", "-1");
+      });
+    });
+
+    it("activates the focused nav item with Enter and with Space", async () => {
+      const user = userEvent.setup();
+      render(
+        <Sidebar active="wallet" onNavigate={onNavigate} open={false} onClose={onClose} />,
+      );
+
+      const transactions = screen.getByRole("button", { name: "Transactions" });
+      transactions.focus();
+      expect(transactions).toHaveFocus();
+
+      await user.keyboard("{Enter}");
+      expect(onNavigate).toHaveBeenCalledWith("transactions");
+
+      onNavigate.mockClear();
+
+      const soroban = screen.getByRole("button", { name: "Soroban" });
+      soroban.focus();
+      await user.keyboard(" ");
+      expect(onNavigate).toHaveBeenCalledWith("soroban");
+    });
+
+    it("keeps an accessible name on the icon-only collapsed nav items", () => {
+      localStorage.setItem("sorokit-sidebar-collapsed", "true");
+
+      render(
+        <Sidebar active="wallet" onNavigate={onNavigate} open={false} onClose={onClose} />,
+      );
+
+      // Collapsed buttons render no text, so the name has to come from aria-label.
+      const transactions = screen.getByRole("button", { name: "Transactions" });
+      expect(transactions).toHaveAccessibleName("Transactions");
+      expect(transactions).not.toHaveTextContent("Transactions");
+
+      localStorage.removeItem("sorokit-sidebar-collapsed");
     });
   });
 });

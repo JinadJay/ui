@@ -274,6 +274,203 @@ describe("TransactionHistory", () => {
     });
   });
 
+  it("discards stale in-flight fetches during rapid address changes with pending fetches (#727)", async () => {
+    const ADDRESS_A = ADDRESS;
+    const ADDRESS_B = "GBBD7PQPDHFWD6Q5CFF3J4L3R75EAE6Z4NZZ2QY6M2G4K4W4P6N3X2B1";
+    const ADDRESS_C = "GCCE7PQPDHFWD6Q5CFF3J4L3R75EAE6Z4NZZ2QY6M2G4K4W4P6N3X2C2";
+
+    let resolveA: (value: unknown) => void;
+    const pendingA = new Promise((resolve) => {
+      resolveA = resolve;
+    });
+
+    let resolveB: (value: unknown) => void;
+    const pendingB = new Promise((resolve) => {
+      resolveB = resolve;
+    });
+
+    let resolveC: (value: unknown) => void;
+    const pendingC = new Promise((resolve) => {
+      resolveC = resolve;
+    });
+
+    const txsA = [
+      {
+        ...makeTx(1),
+        hash: "hash_addr_a_00000000000000000000000000000000000000000000000000001",
+      },
+    ];
+
+    const txsB = [
+      {
+        ...makeTx(2),
+        hash: "hash_addr_b_00000000000000000000000000000000000000000000000000002",
+      },
+    ];
+
+    const txsC = [
+      {
+        ...makeTx(3),
+        hash: "hash_addr_c_00000000000000000000000000000000000000000000000000003",
+      },
+    ];
+
+    const getHistory = vi.fn().mockImplementation((addr: string) => {
+      if (addr === ADDRESS_A) return pendingA;
+      if (addr === ADDRESS_B) return pendingB;
+      if (addr === ADDRESS_C) return pendingC;
+      return Promise.resolve({ data: [], error: null, total: 0 });
+    });
+
+    vi.mocked(getClient).mockReturnValue({
+      transaction: { getHistory },
+    } as unknown as SorokitClient);
+
+    vi.mocked(useSorokit).mockReturnValue(
+      mockUseSorokit({ address: ADDRESS_A, isConnected: true }),
+    );
+
+    const { rerender } = render(<TransactionHistory />);
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+
+    expect(getHistory).toHaveBeenCalledWith(ADDRESS_A, 1, PAGE_SIZE);
+
+    // Rapidly switch to address B while fetch A is still pending
+    vi.mocked(useSorokit).mockReturnValue(
+      mockUseSorokit({ address: ADDRESS_B, isConnected: true }),
+    );
+    rerender(<TransactionHistory />);
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+
+    expect(getHistory).toHaveBeenCalledWith(ADDRESS_B, 1, PAGE_SIZE);
+
+    // Rapidly switch to address C while fetches A and B are still pending
+    vi.mocked(useSorokit).mockReturnValue(
+      mockUseSorokit({ address: ADDRESS_C, isConnected: true }),
+    );
+    rerender(<TransactionHistory />);
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+
+    expect(getHistory).toHaveBeenCalledWith(ADDRESS_C, 1, PAGE_SIZE);
+
+    // Now resolve the old in-flight fetch for Address A
+    await act(async () => {
+      resolveA({ data: txsA, error: null, total: 11 });
+      await Promise.resolve();
+      await Promise.resolve();
+      vi.advanceTimersByTime(0);
+    });
+
+    // Stale data from Address A must NOT appear
+    expect(screen.queryByText(/11 transactions/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/hash_addr_a/i)).not.toBeInTheDocument();
+
+    // Now resolve the in-flight fetch for Address B
+    await act(async () => {
+      resolveB({ data: txsB, error: null, total: 22 });
+      await Promise.resolve();
+      await Promise.resolve();
+      vi.advanceTimersByTime(0);
+    });
+
+    // Stale data from Address B must NOT appear
+    expect(screen.queryByText(/22 transactions/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/hash_addr_b/i)).not.toBeInTheDocument();
+
+    // Finally resolve the fetch for current Address C
+    await act(async () => {
+      resolveC({ data: txsC, error: null, total: 33 });
+      await Promise.resolve();
+      await Promise.resolve();
+      vi.advanceTimersByTime(0);
+    });
+
+    // Address C's data must be rendered
+    await waitFor(() => {
+      expect(screen.getByText(/33 transactions/i)).toBeInTheDocument();
+    });
+  });
+
+  it("discards late in-flight response when address change triggers a page reset (#727)", async () => {
+    const ADDRESS_B = "GBBD7PQPDHFWD6Q5CFF3J4L3R75EAE6Z4NZZ2QY6M2G4K4W4P6N3X2B1";
+
+    let resolvePage2A: (value: unknown) => void;
+    const pendingPage2A = new Promise((resolve) => {
+      resolvePage2A = resolve;
+    });
+
+    const getHistory = vi.fn().mockImplementation((addr: string, page: number) => {
+      if (addr === ADDRESS && page === 1) {
+        return Promise.resolve({
+          data: Array.from({ length: PAGE_SIZE }, (_, i) => makeTx(i)),
+          error: null,
+          total: 25,
+        });
+      }
+      if (addr === ADDRESS && page === 2) {
+        return pendingPage2A;
+      }
+      if (addr === ADDRESS_B) {
+        return Promise.resolve({
+          data: [makeTx(99)],
+          error: null,
+          total: 1,
+        });
+      }
+      return Promise.resolve({ data: [], error: null, total: 0 });
+    });
+
+    vi.mocked(getClient).mockReturnValue({
+      transaction: { getHistory },
+    } as unknown as SorokitClient);
+
+    const { rerender } = render(<TransactionHistory />);
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    await waitFor(() => screen.getByText("Next"));
+
+    // Navigate to page 2 on account A; fetch remains pending
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(getHistory).toHaveBeenCalledWith(ADDRESS, 2, PAGE_SIZE);
+
+    // Switch wallet address to account B while page 2 fetch is in-flight
+    vi.mocked(useSorokit).mockReturnValue(
+      mockUseSorokit({ address: ADDRESS_B, isConnected: true }),
+    );
+    rerender(<TransactionHistory />);
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+
+    // Now resolve the late page 2 fetch for account A
+    await act(async () => {
+      resolvePage2A({
+        data: Array.from({ length: PAGE_SIZE }, (_, i) => makeTx(10 + i)),
+        error: null,
+        total: 25,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      vi.advanceTimersByTime(0);
+    });
+
+    // Account B's page 1 results must be displayed, not the stale page 2 from account A
+    await waitFor(() => {
+      expect(screen.getByText(/1 transaction/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/25 transactions/i)).not.toBeInTheDocument();
+  });
+
   it("handles an invalid total without rendering invalid pagination", async () => {
     mockGetHistory([], Number.NaN);
     render(<TransactionHistory />);
@@ -796,6 +993,182 @@ describe("TransactionHistory", () => {
       await waitFor(() => {
         expect(screen.getByText("Network request failed")).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("unfunded account empty state (#684)", () => {
+    it("shows a friendly unfunded-account message for a 404 account-not-found error", async () => {
+      mockClient.transaction.getHistory = vi.fn().mockResolvedValue({
+        data: null,
+        error: "404: account not found",
+        total: 0,
+      });
+
+      render(<TransactionHistory />);
+      act(() => { vi.advanceTimersByTime(0); });
+
+      await waitFor(() => {
+        expect(screen.getByText(/unfunded account.*no transactions yet/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByText("404: account not found")).not.toBeInTheDocument();
+    });
+
+    it("shows the Friendbot link for an unfunded account on testnet", async () => {
+      vi.mocked(useSorokit).mockReturnValue(
+        mockUseSorokit({
+          address: ADDRESS,
+          isConnected: true,
+          network: { name: "testnet" } as ReturnType<typeof useSorokit>["network"],
+        }),
+      );
+      mockClient.transaction.getHistory = vi.fn().mockResolvedValue({
+        data: null,
+        error: "Account not found",
+        total: 0,
+      });
+
+      render(<TransactionHistory />);
+      act(() => { vi.advanceTimersByTime(0); });
+
+      await waitFor(() => screen.getByText(/unfunded account/i));
+      expect(screen.getByRole("link", { name: /fund with friendbot/i })).toHaveAttribute(
+        "href",
+        "https://friendbot.stellar.org",
+      );
+    });
+
+    it("does not treat a generic network error as an unfunded account", async () => {
+      mockClient.transaction.getHistory = vi.fn().mockResolvedValue({
+        data: null,
+        error: "Network request failed",
+        total: 0,
+      });
+
+      render(<TransactionHistory />);
+      act(() => { vi.advanceTimersByTime(0); });
+
+      await waitFor(() => {
+        expect(screen.getByText("Network request failed")).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/unfunded account/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("memo search filter (#684)", () => {
+    function makeMemoTx(hashSuffix: string, memo: string | null): Transaction {
+      return {
+        hash: `hash${hashSuffix.padStart(56, "0")}`,
+        ledger: 3000,
+        successful: true,
+        createdAt: new Date("2024-01-01").toISOString(),
+        memo,
+      };
+    }
+
+    it("renders a memo search input", async () => {
+      mockGetHistory([], 0);
+      render(<TransactionHistory />);
+      act(() => { vi.advanceTimersByTime(0); });
+      await waitFor(() => screen.getByText("No transactions yet"));
+
+      expect(
+        screen.getByRole("textbox", { name: /search transactions by memo/i }),
+      ).toBeInTheDocument();
+    });
+
+    it("filters transactions to those whose memo matches the search text", async () => {
+      const invoiceTx = makeMemoTx("1", "invoice #42");
+      const rentTx = makeMemoTx("2", "rent payment");
+      mockGetHistory([invoiceTx, rentTx], 2);
+
+      render(<TransactionHistory />);
+      act(() => { vi.advanceTimersByTime(0); });
+      await waitFor(() => screen.getAllByRole("article"));
+      expect(screen.getAllByRole("article")).toHaveLength(2);
+
+      fireEvent.change(
+        screen.getByRole("textbox", { name: /search transactions by memo/i }),
+        { target: { value: "invoice" } },
+      );
+
+      const rows = screen.getAllByRole("article");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toHaveTextContent(invoiceTx.hash.slice(0, 10));
+    });
+
+    it("matches memo search case-insensitively", async () => {
+      const tx = makeMemoTx("1", "Coffee Fund");
+      mockGetHistory([tx], 1);
+
+      render(<TransactionHistory />);
+      act(() => { vi.advanceTimersByTime(0); });
+      await waitFor(() => screen.getAllByRole("article"));
+
+      fireEvent.change(
+        screen.getByRole("textbox", { name: /search transactions by memo/i }),
+        { target: { value: "coffee" } },
+      );
+
+      expect(screen.getAllByRole("article")).toHaveLength(1);
+    });
+
+    it("excludes transactions with no memo when a search term is entered", async () => {
+      const withMemo = makeMemoTx("1", "salary");
+      const withoutMemo = makeMemoTx("2", null);
+      mockGetHistory([withMemo, withoutMemo], 2);
+
+      render(<TransactionHistory />);
+      act(() => { vi.advanceTimersByTime(0); });
+      await waitFor(() => screen.getAllByRole("article"));
+      expect(screen.getAllByRole("article")).toHaveLength(2);
+
+      fireEvent.change(
+        screen.getByRole("textbox", { name: /search transactions by memo/i }),
+        { target: { value: "salary" } },
+      );
+
+      const rows = screen.getAllByRole("article");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toHaveTextContent(withMemo.hash.slice(0, 10));
+    });
+
+    it("shows every transaction again once the memo search is cleared", async () => {
+      const tx1 = makeMemoTx("1", "alpha");
+      const tx2 = makeMemoTx("2", "beta");
+      mockGetHistory([tx1, tx2], 2);
+
+      render(<TransactionHistory />);
+      act(() => { vi.advanceTimersByTime(0); });
+      await waitFor(() => screen.getAllByRole("article"));
+
+      const searchInput = screen.getByRole("textbox", {
+        name: /search transactions by memo/i,
+      });
+      fireEvent.change(searchInput, { target: { value: "alpha" } });
+      expect(screen.getAllByRole("article")).toHaveLength(1);
+
+      fireEvent.change(searchInput, { target: { value: "" } });
+      expect(screen.getAllByRole("article")).toHaveLength(2);
+    });
+
+    it("combines the memo search with the status filter", async () => {
+      const okInvoice = { ...makeMemoTx("1", "invoice"), successful: true };
+      const failedInvoice = { ...makeMemoTx("2", "invoice"), successful: false };
+      mockGetHistory([okInvoice, failedInvoice], 2);
+
+      render(<TransactionHistory />);
+      act(() => { vi.advanceTimersByTime(0); });
+      await waitFor(() => screen.getAllByRole("article"));
+
+      fireEvent.change(
+        screen.getByRole("textbox", { name: /search transactions by memo/i }),
+        { target: { value: "invoice" } },
+      );
+      fireEvent.click(screen.getByRole("button", { name: /^success$/i }));
+
+      const rows = screen.getAllByRole("article");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toHaveTextContent(okInvoice.hash.slice(0, 10));
     });
   });
 

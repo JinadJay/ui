@@ -3,14 +3,21 @@ import {
   CheckmarkCircle01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useSorokit } from "@/context/useSorokit";
 import { type NetworkInfo, type TxResult } from "@/lib/client";
-import { cn, truncateAddress, validateStellarAddress } from "@/lib/utils";
+import {
+  cn,
+  friendlyError,
+  truncateAddress,
+  truncateToUtf8ByteLength,
+  utf8ByteLength,
+  validateStellarAddress,
+} from "@/lib/utils";
 
 import {
   TransactionConfirmModal,
@@ -19,6 +26,11 @@ import {
 import { TransactionStatusTracker } from "./TransactionStatusTracker";
 
 type State = "idle" | "loading" | "success" | "error";
+
+/** Stellar's MEMO_TEXT limit is 28 bytes (UTF-8 encoded), not 28 characters. */
+const MEMO_TEXT_MAX_BYTES = 28;
+
+const STROOPS_PER_XLM = 10_000_000;
 
 export type MemoType = "none" | "text" | "id";
 
@@ -33,6 +45,7 @@ export interface TransactionPanelProps {
   defaultAmount?: string;
   defaultMemo?: string;
   previewMode?: boolean;
+  decimals?: number;
   onSuccess?: (result: TxResult) => void;
   onError?: (error: string) => void;
   className?: string;
@@ -43,6 +56,7 @@ export function TransactionPanel({
   defaultAmount = "",
   defaultMemo = "",
   previewMode = true,
+  decimals = 7,
   onSuccess,
   onError,
   className,
@@ -68,8 +82,34 @@ export function TransactionPanel({
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<TransactionPreviewData | null>(null);
   const [isBuildingPreview, setIsBuildingPreview] = useState(false);
+  const [estimatedFeeXlm, setEstimatedFeeXlm] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const formId = useId();
+
+  // Fetch the current network fee estimate once a wallet is connected so the
+  // balance check below can warn the user before they submit, rather than
+  // only after Horizon rejects an underfunded transaction.
+  useEffect(() => {
+    if (!client || !isConnected) return;
+    let active = true;
+    client.transaction
+      .estimateFee()
+      .then(({ data }) => {
+        if (!active || !data) return;
+        const stroops = parseFloat(data.recommended ?? data.baseFee);
+        if (Number.isFinite(stroops)) {
+          setEstimatedFeeXlm(stroops / STROOPS_PER_XLM);
+        }
+      })
+      .catch(() => {
+        // Fee estimation is a soft enhancement to the balance warning; if it
+        // fails, fall back to treating the fee as negligible rather than
+        // blocking the form.
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, isConnected]);
 
   const assetOptions = balances ?? [];
 
@@ -83,15 +123,31 @@ export function TransactionPanel({
   const isDestValid = validateStellarAddress(dest);
   const isSelfPayment = dest.trim() === address;
   const parsedAmount = parseFloat(amount);
-  const isAmountValid = !isNaN(parsedAmount) && parsedAmount >= 0.0000001;
+  const amountStr = amount.trim();
+  const decimalParts = amountStr.includes(".") ? amountStr.split(".")[1] : "";
+  const exceedsDecimals = decimalParts.length > decimals;
+  const isAmountValid = !isNaN(parsedAmount) && parsedAmount >= 0.0000001 && !exceedsDecimals;
   const isMemoIdValid =
     memoType !== "id" || (memo.trim() !== "" && /^\d+$/.test(memo.trim()));
 
   // Get XLM balance from balances array
   const xlmBalance = balances.find((b) => b.asset === "XLM")?.balance || "0";
   const xlmBalanceNumber = parseFloat(xlmBalance);
-  const hasSufficientBalance = !isNaN(parsedAmount) && parsedAmount <= xlmBalanceNumber;
   const selectedAssetBalance = assetOptions.find((b) => b.asset === selectedAsset);
+
+  // The network fee is always paid in XLM regardless of which asset is being
+  // sent, so a payment in XLM must leave room for both the amount and the
+  // fee, while a payment in another asset only needs the fee reserved out of
+  // the separate XLM balance.
+  const isSendingXlm = selectedAsset === "XLM";
+  const spendableXlm = xlmBalanceNumber - estimatedFeeXlm;
+  const hasSufficientBalance =
+    !isNaN(parsedAmount) &&
+    (isSendingXlm
+      ? parsedAmount <= spendableXlm
+      : parsedAmount <= (selectedAssetBalance ? parseFloat(selectedAssetBalance.balance) : 0));
+  const exceedsSpendableBalance =
+    isSendingXlm && !isNaN(parsedAmount) && parsedAmount > 0 && parsedAmount > spendableXlm;
 
   const canSubmit =
     isConnected &&
@@ -130,9 +186,10 @@ export function TransactionPanel({
       });
       if (signal.aborted) return;
       if (err) {
-        setError(err);
+        const message = friendlyError(err);
+        setError(message);
         setState("error");
-        onError?.(err);
+        onError?.(message);
         return;
       }
       setResult(data);
@@ -146,9 +203,10 @@ export function TransactionPanel({
     } catch (e) {
       if (!signal.aborted) {
         const msg = e instanceof Error ? e.message : "Unknown error";
-        setError(msg);
+        const message = friendlyError(msg);
+        setError(message);
         setState("error");
-        onError?.(msg);
+        onError?.(message);
       }
     } finally {
       setPreview(null);
@@ -354,6 +412,9 @@ export function TransactionPanel({
               step="0.0000001"
               value={amount}
               onChange={(e) => {
+                // Keep exactly what the user typed: truncating here would make
+                // `exceedsDecimals` unreachable, so an 8th decimal would be silently
+                // dropped instead of surfacing the error below.
                 setAmount(e.target.value);
                 setAmountDirty(true);
               }}
@@ -363,6 +424,9 @@ export function TransactionPanel({
                   : undefined
               }
               error={
+                // A sub-minimum amount can only be written with more decimal
+                // places than the asset allows, so the minimum check is reported
+                // first: it is the constraint the user has to act on.
                 amountDirty
                   ? amount.trim() === ""
                     ? "Amount is required"
@@ -370,13 +434,23 @@ export function TransactionPanel({
                       ? "Amount must be greater than 0"
                       : parsedAmount < 0.0000001
                         ? "Minimum amount is 0.0000001 XLM"
-                        : !hasSufficientBalance
-                          ? "Insufficient balance"
-                          : undefined
+                        : exceedsDecimals
+                          ? `Amount cannot exceed ${decimals} decimal places`
+                          : !hasSufficientBalance
+                            ? isSendingXlm && estimatedFeeXlm > 0
+                              ? "Insufficient balance (amount + network fee exceeds available balance)"
+                              : "Insufficient balance"
+                            : undefined
                   : undefined
               }
               disabled={state === "loading"}
             />
+            {amountDirty && exceedsSpendableBalance && (
+              <Badge variant="error" dot live data-testid="balance-warning-badge">
+                Exceeds spendable balance (amount + est. fee of {estimatedFeeXlm.toFixed(7)}{" "}
+                XLM)
+              </Badge>
+            )}
             <Select
               label="Memo type"
               value={memoType}
@@ -396,7 +470,17 @@ export function TransactionPanel({
                   placeholder={memoType === "id" ? "1234567890" : "Text memo"}
                   inputMode={memoType === "id" ? "numeric" : undefined}
                   value={memo}
-                  onChange={(e) => setMemo(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    // MEMO_TEXT is a 28-byte (UTF-8) limit, not 28 characters —
+                    // truncate on every keystroke so the value can never exceed
+                    // what Horizon will accept, rather than only warning about it.
+                    setMemo(
+                      memoType === "text"
+                        ? truncateToUtf8ByteLength(next, MEMO_TEXT_MAX_BYTES)
+                        : next,
+                    );
+                  }}
                   error={
                     memoType === "id" && memo.trim() !== "" && !isMemoIdValid
                       ? "Memo ID must be an unsigned integer"
@@ -406,9 +490,9 @@ export function TransactionPanel({
                 />
                 {memoType === "text" && (
                   <span
-                    className={`text-[10px] text-right ${memo.length >= 28 ? "text-red" : "text-ink-3"}`}
+                    className={`text-[10px] text-right ${utf8ByteLength(memo) >= MEMO_TEXT_MAX_BYTES ? "text-red" : "text-ink-3"}`}
                   >
-                    {memo.length}/28
+                    {utf8ByteLength(memo)}/{MEMO_TEXT_MAX_BYTES} bytes
                   </span>
                 )}
               </div>
@@ -439,6 +523,7 @@ export function TransactionPanel({
             size="md"
             loading={state === "loading" || isBuildingPreview}
             disabled={!canSubmit}
+            data-testid="submit-transaction"
           >
             {state === "loading"
               ? "Submitting…"

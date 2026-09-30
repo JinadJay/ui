@@ -26,4 +26,48 @@ describe("ConnectScreen", () => {
     fireEvent.click(btn);
     expect(connectWallet).toHaveBeenCalledTimes(1);
   });
+
+  it("shows a loading state and disables the CTA while connecting", () => {
+    vi.mocked(useSorokit).mockReturnValue({
+      connectWallet: vi.fn(),
+      isConnecting: true,
+      error: null,
+      clearError: vi.fn(),
+    } as unknown as ReturnType<typeof useSorokit>);
+
+    render(<ConnectScreen />);
+
+    const btn = screen.getByRole("button", { name: /Connecting/i });
+    expect(btn).toBeDisabled();
+    expect(screen.getByText("Connecting to your wallet…")).toBeInTheDocument();
+  });
+
+  it("announces connection errors to assistive technology", () => {
+    vi.mocked(useSorokit).mockReturnValue({
+      connectWallet: vi.fn(),
+      isConnecting: false,
+      error: "Wallet connection failed",
+      clearError: vi.fn(),
+    } as unknown as ReturnType<typeof useSorokit>);
+
+    render(<ConnectScreen />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Wallet connection failed");
+  });
+
+  it("resets the document title to the disconnected default (#551)", () => {
+    vi.mocked(useSorokit).mockReturnValue({
+      connectWallet: vi.fn(),
+      isConnecting: false,
+      error: null,
+      clearError: vi.fn(),
+    } as unknown as ReturnType<typeof useSorokit>);
+
+    // Simulate the tab still showing the last dashboard screen.
+    document.title = "Transactions - Sorokit";
+
+    render(<ConnectScreen />);
+
+    expect(document.title).toBe("Connect - Sorokit");
+  });
 });

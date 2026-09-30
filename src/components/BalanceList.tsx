@@ -22,6 +22,13 @@ function getAssetCode(balance: Balance) {
 function toNumericAmount(balance: string): number {
   const n = Number.parseFloat(balance);
   return Number.isFinite(n) ? n : 0;
+ * Parse a balance string to a number, tolerating scientific notation and
+ * non-numeric values (issue #665). Returns 0 for anything unparseable so a
+ * single malformed balance can never poison a sort with NaN.
+ */
+function parseAmount(value: string | undefined): number {
+  const parsed = Number.parseFloat(value ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /**
@@ -44,6 +51,8 @@ function compareBalances(a: Balance, b: Balance) {
 
   const aZero = toNumericAmount(a.balance) === 0;
   const bZero = toNumericAmount(b.balance) === 0;
+  const aZero = parseAmount(a.balance) === 0;
+  const bZero = parseAmount(b.balance) === 0;
   if (aZero !== bZero) {
     return aZero ? 1 : -1;
   }
@@ -55,6 +64,7 @@ function sortBalances(balances: Balance[], mode: SortMode) {
   if (mode === "balance-desc") {
     return [...balances].sort(
       (a, b) => toNumericAmount(b.balance) - toNumericAmount(a.balance),
+      (a, b) => parseAmount(b.balance) - parseAmount(a.balance),
     );
   }
   if (mode === "alpha") {
@@ -83,6 +93,7 @@ const AssetRow = memo(function AssetRow({
   showIssuerSuffix?: boolean;
 }) {
   const isZeroBalance = toNumericAmount(b.balance) === 0;
+  const isZeroBalance = parseAmount(b.balance) === 0;
   const onClick = useCallback(() => {
     onAssetClick?.(b);
     requestAnimationFrame(() => {
@@ -139,7 +150,18 @@ export interface BalanceListProps {
   xlmPrice?: number;
   /** Fiat currency for the portfolio total. Defaults to USD. */
   currency?: "USD" | "EUR" | "GBP" | "XLM";
+  /**
+   * Fiat currency used to format the XLM-equivalent total (issue #665).
+   * Defaults to USD; EUR and GBP are also supported.
+   */
+  currency?: string;
 }
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+};
 
 export function BalanceList({
   onAssetClick,
@@ -170,6 +192,7 @@ export function BalanceList({
 
   const filtered = useMemo(() => {
     let list = search
+    const bySearch = search
       ? balances.filter((b) =>
           getAssetCode(b).toLowerCase().includes(search.toLowerCase()),
         )
@@ -179,6 +202,10 @@ export function BalanceList({
     }
     return list;
   }, [balances, search, hideZero]);
+    return hideZero
+      ? bySearch.filter((b) => parseAmount(b.balance) !== 0)
+      : bySearch;
+  }, [balances, hideZero, search]);
 
   const { sorted, sortedLp } = useMemo(() => {
     const regularBalances = filtered.filter(
@@ -200,6 +227,7 @@ export function BalanceList({
       balances
         .filter((b) => b.assetType === "native")
         .reduce((sum, b) => sum + toNumericAmount(b.balance), 0),
+        .reduce((sum, b) => sum + parseAmount(b.balance), 0),
     [balances],
   );
 
@@ -233,6 +261,9 @@ export function BalanceList({
             <p className="text-[11px] text-ink-3 mt-0.5">
               ~{xlmTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM
               {fiatTotal ? ` (${fiatTotal})` : ""}
+              {typeof xlmPrice === "number"
+                ? ` (~${CURRENCY_SYMBOLS[currency] ?? `${currency} `}${(xlmTotal * xlmPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })})`
+                : ""}
             </p>
           )}
         </div>
@@ -243,6 +274,11 @@ export function BalanceList({
               className="text-[11px] text-ink-3 hover:text-ink-2 transition-colors px-2 py-1 rounded-md hover:bg-surface-2"
               title="Hide zero balances"
               aria-pressed={hideZero}
+              type="button"
+              onClick={() => setHideZero((v) => !v)}
+              aria-pressed={hideZero}
+              title={hideZero ? "Show zero balances" : "Hide zero balances"}
+              className="text-[11px] text-ink-3 hover:text-ink-2 transition-colors px-2 py-1 rounded-md hover:bg-surface-2"
             >
               {hideZero ? "Show zero" : "Hide zero"}
             </button>
