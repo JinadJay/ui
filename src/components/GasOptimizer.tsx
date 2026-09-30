@@ -10,7 +10,7 @@ import {
   ZapIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useSorokit } from "@/context/useSorokit";
 import { cn } from "@/lib/utils";
@@ -174,6 +174,7 @@ export function GasOptimizer({
   const { client, network } = useSorokit();
   const { fee } = useFeeData(refreshInterval);
   const [containerRef, isVisible] = useIsVisible<HTMLDivElement>();
+  const { client, network, registerWatcher } = useSorokit();
   const [gasPriceData, setGasPriceData] = useState<GasPriceData | null>(null);
   const [estimate, setEstimate] = useState<GasEstimate | null>(null);
   const [loading, setLoading] = useState(true);
@@ -247,24 +248,45 @@ export function GasOptimizer({
     }
   }, [client, estimate, operations]);
 
+  const gasIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     if (!isVisible) return;
     const timerId = window.setTimeout(() => {
       void loadGasData();
     }, 0);
     if (refreshInterval > 0) {
-      const id = setInterval(() => {
+      gasIntervalRef.current = setInterval(() => {
         void loadGasData();
       }, refreshInterval);
       return () => {
         window.clearTimeout(timerId);
-        clearInterval(id);
+        if (gasIntervalRef.current !== null) {
+          clearInterval(gasIntervalRef.current);
+          gasIntervalRef.current = null;
+        }
       };
     }
     return () => {
       window.clearTimeout(timerId);
     };
   }, [loadGasData, refreshInterval, isVisible]);
+
+  // Register a cancel callback so `resetTransactionWatchers` can stop polling
+  // on network switch (#715).
+  useEffect(() => {
+    const cancel = () => {
+      if (gasIntervalRef.current !== null) {
+        clearInterval(gasIntervalRef.current);
+        gasIntervalRef.current = null;
+      }
+    };
+    const deregister = registerWatcher?.(cancel) ?? (() => {});
+    return () => {
+      deregister();
+      cancel();
+    };
+  }, [registerWatcher]);
 
   useEffect(() => {
     if (!estimate) return;

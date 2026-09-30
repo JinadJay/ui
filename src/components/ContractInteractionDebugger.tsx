@@ -59,6 +59,14 @@ interface DiffEntry {
 const DEBUG_HISTORY_KEY = "sorokit-soroban-debug-history";
 const DEBUG_HISTORY_LIMIT = 10;
 
+/**
+ * Soroban VM diagnostics are sometimes returned with raw ANSI colour codes
+ * (e.g. `\u001b[31m`). Strip them so they render as readable text instead of
+ * garbled escape sequences (issue #668).
+ */
+const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_PATTERN, "");
 // Issue #668: Soroban VM diagnostics can include ANSI colour escapes which
 // render as garbled characters (e.g. `\u001b[31m`). Strip them before display.
 // eslint-disable-next-line no-control-regex
@@ -265,7 +273,10 @@ export function ContractInteractionDebugger({
     setCopiedKey(key);
     if (contractId && method) {
       const entry = createDebuggerEntry({ contractId, method, args, state, result, txHash, error, stateBefore, stateAfter });
-      onHistoryChange?.(addDebugHistory(entry, history));
+      // Persist first: an optional call would skip `addDebugHistory` entirely
+      // when no `onHistoryChange` handler is supplied, silently losing the entry.
+      const nextHistory = addDebugHistory(entry, history);
+      onHistoryChange?.(nextHistory);
     }
     window.setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1600);
   };
@@ -283,6 +294,7 @@ export function ContractInteractionDebugger({
           </Button>
         ) : null}
       </div>
+      <div className="mt-3 min-w-0 overflow-x-auto">{children}</div>
       <div className="mt-3 overflow-x-auto [scrollbar-width:thin]">{children}</div>
     </section>
   );
@@ -304,7 +316,7 @@ export function ContractInteractionDebugger({
           {buildSection(
             "Prepared contract call",
             "The contract invocation payload prepared for submission.",
-            <div className="rounded-lg border border-line bg-surface p-3">
+            <div className="rounded-lg border border-line bg-surface p-3 overflow-x-auto">
               <JsonView data={{ contractId, method, args }} shouldExpandNode={() => true} />
             </div>,
             "prepared-call",
@@ -420,6 +432,7 @@ export function ContractInteractionDebugger({
           {buildSection(
             "Final result",
             "The final transaction outcome once the submission completes.",
+            <div className="rounded-lg border border-line bg-surface p-3 overflow-x-auto">
             <div className="rounded-lg border border-line bg-surface p-3">
               {error ? (
                 <p className="mb-3 rounded-md border border-error-dim bg-error-dim-muted px-3 py-2 text-[12px] font-mono text-red whitespace-pre-wrap break-words">
