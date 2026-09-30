@@ -9,6 +9,13 @@ describe("Public exports surface", () => {
     expect(exports.SwapRoute).toBeDefined();
     expect(exports.AllocationInput).toBeDefined();
     expect(exports.StakingDashboard).toBeDefined();
+describe('Public exports surface', () => {
+  it('exposes all public component exports', () => {
+    expect(exports.FeeEstimator).toBeTypeOf('function');
+    expect(exports.AddressDisplay).toBeTypeOf('function');
+    expect(exports.AssetPill).toBeTypeOf('function');
+    expect(exports.ContractEventFeed).toBeTypeOf('function');
+    expect(exports.GovernanceDashboard).toBeTypeOf('function');
   });
 
   it("exposes all public UI primitive and component exports from src/index.ts", () => {
@@ -174,6 +181,10 @@ describe("Public exports surface", () => {
       contractEvent: exports.ContractEvent;
       networkInfo: exports.NetworkInfo;
       invokeParams: exports.InvokeParams;
+      governanceProps: exports.GovernanceDashboardProps;
+      governanceProposal: exports.GovernanceProposal;
+      proposalStatus: exports.ProposalStatus;
+      voteChoice: exports.VoteChoice;
     };
     const actual: Expected = {} as Expected;
     expect(actual).toBeDefined();

@@ -48,7 +48,7 @@ describe("SorobanPanel", () => {
   describe("invoke mode (default)", () => {
     it("should have invoke button disabled when method is empty", () => {
       render(<SorobanPanel contractId="" onContractIdChange={() => {}} />);
-      expect(screen.getByRole("button", { name: /invoke/i })).toBeDisabled();
+      expect(screen.getByTestId("soroban-submit")).toBeDisabled();
     });
 
     // Issue #581 — the Invoke button must submit the parent form natively
@@ -64,7 +64,7 @@ describe("SorobanPanel", () => {
         target: { value: "balance" },
       });
 
-      const invokeButton = screen.getByRole("button", { name: /invoke/i });
+      const invokeButton = screen.getByTestId("soroban-submit");
       const form = document.querySelector("form");
       expect(invokeButton).toHaveAttribute("type", "submit");
       expect(form).not.toBeNull();
@@ -84,7 +84,7 @@ describe("SorobanPanel", () => {
       fireEvent.change(screen.getByPlaceholderText(/transfer/i), { target: { value: "mint" } });
       fireEvent.change(screen.getByPlaceholderText(/\[.*\]/i), { target: { value: "invalid json {" } });
       rerender(<SorobanPanel contractId="C123" onContractIdChange={setContractId} />);
-      fireEvent.click(screen.getByRole("button", { name: /invoke/i }));
+      fireEvent.click(screen.getByTestId("soroban-submit"));
       expect(await screen.findByText(/Invalid JSON in arguments/i)).toBeInTheDocument();
     });
 
@@ -221,6 +221,79 @@ describe("SorobanPanel", () => {
     fireEvent.input(textarea, { target: { value: "[\nline1\nline2\n]" } });
 
     expect(textarea.style.height).toBe("120px");
+  });
+
+  // ── Contract ID history cap and ordering (#815) ────────────────────────
+  describe("contract history — cap and ordering (#815)", () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it("caps stored history at 10 entries, evicting the oldest when an 11th is added", async () => {
+      // Pre-populate localStorage with 10 distinct contract IDs (indices 01–10).
+      const existing = Array.from({ length: 10 }, (_, i) =>
+        `C${"A".repeat(54)}${String(i + 1).padStart(1, "0")}`,
+      );
+      localStorage.setItem(
+        "sorokit-soroban-contract-history",
+        JSON.stringify(existing),
+      );
+
+      // Render with the 11th contract ID already in the input.
+      const eleventh = `C${"B".repeat(55)}`;
+      mockInvokeContract.mockResolvedValueOnce({ data: { ok: true }, error: null });
+      render(
+        <SorobanPanel contractId={eleventh} onContractIdChange={() => {}} />,
+      );
+      fireEvent.change(screen.getByLabelText("Method"), {
+        target: { value: "balance" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /invoke/i }));
+      await screen.findByText("Result", { selector: "span" });
+
+      const stored: string[] = JSON.parse(
+        localStorage.getItem("sorokit-soroban-contract-history") ?? "[]",
+      );
+      expect(stored).toHaveLength(10);
+      // The oldest entry (index 01) must have been evicted.
+      expect(stored).not.toContain(existing[existing.length - 1]);
+      // The newest entry is first.
+      expect(stored[0]).toBe(eleventh);
+    });
+
+    it("stores the most-recently used contract ID first (newest-first ordering)", async () => {
+      localStorage.clear();
+      const contractA = `C${"A".repeat(55)}`;
+      const contractB = `C${"B".repeat(55)}`;
+
+      // Invoke with A first, then B.
+      mockInvokeContract
+        .mockResolvedValueOnce({ data: { ok: true }, error: null })
+        .mockResolvedValueOnce({ data: { ok: true }, error: null });
+
+      const { rerender } = render(
+        <SorobanPanel contractId={contractA} onContractIdChange={() => {}} />,
+      );
+      fireEvent.change(screen.getByLabelText("Method"), {
+        target: { value: "balance" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /invoke/i }));
+      await screen.findByText("Result", { selector: "span" });
+
+      // Clear UI state, switch to contract B.
+      fireEvent.click(screen.getByRole("button", { name: /clear/i }));
+      rerender(
+        <SorobanPanel contractId={contractB} onContractIdChange={() => {}} />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /invoke/i }));
+      await screen.findByText("Result", { selector: "span" });
+
+      const stored: string[] = JSON.parse(
+        localStorage.getItem("sorokit-soroban-contract-history") ?? "[]",
+      );
+      // B was used most recently, so it must appear before A.
+      expect(stored.indexOf(contractB)).toBeLessThan(stored.indexOf(contractA));
+    });
   });
 
   // ── Contract ID history (#205) ──────────────────────────────────────────
