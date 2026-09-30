@@ -154,21 +154,26 @@ function copyViaExecCommand(text: string): boolean {
     textarea.style.pointerEvents = "none";
     document.body.appendChild(textarea);
     textarea.select();
-    textarea.setSelectionRange(0, text.length);
-    const succeeded = document.execCommand("copy");
-    document.body.removeChild(textarea);
     return succeeded;
   } catch {
     return false;
   }
 }
 
+import { useFeeData } from "@/hooks/useFeeData";
+import { useIsVisible } from "@/hooks/useIsVisible";
+
+const DEFAULT_OPERATIONS = ["payment"];
+
 export function GasOptimizer({
   className,
-  operations = ["payment"],
+  operations = DEFAULT_OPERATIONS,
   refreshInterval = 0,
   onExport,
 }: GasOptimizerProps) {
+  const { client, network } = useSorokit();
+  const { fee } = useFeeData(refreshInterval);
+  const [containerRef, isVisible] = useIsVisible<HTMLDivElement>();
   const { client, network, registerWatcher } = useSorokit();
   const [gasPriceData, setGasPriceData] = useState<GasPriceData | null>(null);
   const [estimate, setEstimate] = useState<GasEstimate | null>(null);
@@ -246,6 +251,7 @@ export function GasOptimizer({
   const gasIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    if (!isVisible) return;
     const timerId = window.setTimeout(() => {
       void loadGasData();
     }, 0);
@@ -264,7 +270,7 @@ export function GasOptimizer({
     return () => {
       window.clearTimeout(timerId);
     };
-  }, [loadGasData, refreshInterval]);
+  }, [loadGasData, refreshInterval, isVisible]);
 
   // Register a cancel callback so `resetTransactionWatchers` can stop polling
   // on network switch (#715).
@@ -427,6 +433,7 @@ export function GasOptimizer({
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         "rounded-xl border border-line bg-surface overflow-hidden",
         className,

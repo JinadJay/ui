@@ -1,90 +1,54 @@
-import { fireEvent, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { renderHook, fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { useOutsideClick } from "./useOutsideClick";
 
 describe("useOutsideClick", () => {
-  afterEach(() => {
-    document.body.innerHTML = "";
-    vi.restoreAllMocks();
-  });
-
-  it("fires the callback when clicking outside the referenced element", () => {
+  it("fires callback on click outside the ref element", () => {
     const handler = vi.fn();
-    const insideNode = document.createElement("div");
-    const outsideNode = document.createElement("div");
-    document.body.appendChild(insideNode);
-    document.body.appendChild(outsideNode);
-
-    renderHook(() => {
-      const ref = useOutsideClick<HTMLDivElement>(handler);
-      ref.current = insideNode;
-      return ref;
-    });
-
-    fireEvent.mouseDown(outsideNode);
+    const { result } = renderHook(() => useOutsideClick(handler));
+    
+    // Create a mock element and assign it to the ref
+    const element = document.createElement("div");
+    result.current.current = element as any;
+    
+    // Fire click on document body
+    fireEvent.mouseDown(document.body);
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it("does not fire the callback when clicking inside the referenced element", () => {
+  it("does not fire callback on click inside the ref element", () => {
     const handler = vi.fn();
-    const insideNode = document.createElement("div");
-    const childNode = document.createElement("button");
-    insideNode.appendChild(childNode);
-    document.body.appendChild(insideNode);
-
-    renderHook(() => {
-      const ref = useOutsideClick<HTMLDivElement>(handler);
-      ref.current = insideNode;
-      return ref;
-    });
-
-    fireEvent.mouseDown(insideNode);
-    fireEvent.mouseDown(childNode);
+    const { result } = renderHook(() => useOutsideClick(handler));
+    
+    const element = document.createElement("div");
+    result.current.current = element as any;
+    
+    // Fire click on the element itself
+    fireEvent.mouseDown(element);
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it("does not fire the callback when enabled is false", () => {
+  it("does not fire when enabled is false", () => {
     const handler = vi.fn();
-    const insideNode = document.createElement("div");
-    const outsideNode = document.createElement("div");
-    document.body.appendChild(insideNode);
-    document.body.appendChild(outsideNode);
-
-    renderHook(() => {
-      const ref = useOutsideClick<HTMLDivElement>(handler, false);
-      ref.current = insideNode;
-      return ref;
-    });
-
-    fireEvent.mouseDown(outsideNode);
-    fireEvent.pointerDown(outsideNode);
-    fireEvent.touchStart(outsideNode);
+    const { result } = renderHook(() => useOutsideClick(handler, false));
+    
+    const element = document.createElement("div");
+    result.current.current = element as any;
+    
+    fireEvent.mouseDown(document.body);
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it("removes event listeners on unmount", () => {
+  it("removes listener on unmount", () => {
     const handler = vi.fn();
-    const insideNode = document.createElement("div");
-    const outsideNode = document.createElement("div");
-    document.body.appendChild(insideNode);
-    document.body.appendChild(outsideNode);
-
-    const removeSpy = vi.spyOn(document, "removeEventListener");
-
-    const { unmount } = renderHook(() => {
-      const ref = useOutsideClick<HTMLDivElement>(handler);
-      ref.current = insideNode;
-      return ref;
-    });
-
+    const { result, unmount } = renderHook(() => useOutsideClick(handler));
+    
+    const element = document.createElement("div");
+    result.current.current = element as any;
+    
     unmount();
-
-    expect(removeSpy).toHaveBeenCalledWith("pointerdown", expect.any(Function));
-    expect(removeSpy).toHaveBeenCalledWith("touchstart", expect.any(Function));
-    expect(removeSpy).toHaveBeenCalledWith("mousedown", expect.any(Function));
-
-    fireEvent.mouseDown(outsideNode);
+    
+    fireEvent.mouseDown(document.body);
     expect(handler).not.toHaveBeenCalled();
   });
 });

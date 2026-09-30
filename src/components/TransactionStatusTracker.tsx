@@ -290,6 +290,7 @@ export function TransactionStatusTracker({
 
     void pollTransactions();
     const timerId: ReturnType<typeof setInterval> = window.setInterval(() => {
+    txIntervalRef.current = globalThis.setInterval(() => {
       void pollTransactions();
     }, pollIntervalMs);
 
